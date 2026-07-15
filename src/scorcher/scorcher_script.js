@@ -11,8 +11,6 @@ document.addEventListener('DOMContentLoaded', function () {
     let sandstormFinished = false;
 
     // ─── ЗЕРНО НА ФОН (canvas) ────────────────────────────────────────────────
-    // Раньше работал бесконечно через setInterval даже при скрытом окне — основной
-    // источник лишней нагрузки CPU/памяти в фоне. Теперь управляется start/stop.
     let grainInterval = null;
     let grainResizeHandler = null;
     let grainCanvas = null;
@@ -59,8 +57,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ─── ЗЕРНО НА ЛОГО (анимация SVG feTurbulence) ───────────────────────────
-    // Сдвигаем baseFrequency каждые ~55ms — зерно медленно «дышит».
-    // Тоже останавливается при скрытии окна — нет смысла анимировать невидимый SVG-фильтр.
     let logoGrainInterval = null;
     let logoGrainT = 0;
 
@@ -86,9 +82,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ─── Фоновое видео ────────────────────────────────────────────────────────
-    // bg-video имеет autoplay loop и раньше НИКОГДА не ставился на паузу при скрытии
-    // окна — продолжал декодироваться в фоне даже когда лаунчер не виден. Это основной
-    // источник лишней памяти/CPU. Теперь явно паузим/возобновляем вместе с остальными эффектами.
     function pauseBgVideo() { bgVideo.pause(); }
     function resumeBgVideo() { bgVideo.play().catch(() => {}); }
 
@@ -123,7 +116,7 @@ document.addEventListener('DOMContentLoaded', function () {
             sandstormFinished = false;
             if (fadeAudioInterval) { clearInterval(fadeAudioInterval); fadeAudioInterval = null; }
             stopWeekendTimer();
-            stopHeavyEffects(); // экономия CPU/памяти: фон, зерно и шум лого бесполезны, пока окно скрыто
+            stopHeavyEffects();
         });
 
         window.electronAPI.onStatusUpdate((status) => {
@@ -141,10 +134,9 @@ document.addEventListener('DOMContentLoaded', function () {
         window.electronAPI.onServersConfigUpdate((cfg) => {
             updateServerPorts(cfg.community, cfg.scorcherRegion);
             currentCommunity = cfg.community || 'ru';
-            updateWeekendTimer(); // расписание таймера зависит от региона
+            updateWeekendTimer();
         });
 
-        // Уведомление о новой версии (бэкенд / GitHub Releases fallback) — мягкое, без блокировки
         window.electronAPI.onUpdateAvailable((info) => {
             showUpdateBadge(info);
         });
@@ -175,7 +167,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (fadeAudioInterval) { clearInterval(fadeAudioInterval); fadeAudioInterval = null; }
             startWeekendTimer();
-            startHeavyEffects(); // возобновляем фон/зерно/шум лого при показе лаунчера
+            startHeavyEffects();
         });
     }
 
@@ -239,8 +231,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ─── Переключение портов серверов по региону сообщества ──────────────────
-    // ru = русские порты (1444)
-    // kz = английские: alpha (1441) или beta (1414) — выбирается в настройках
     function getPortForCommunity(community, scorcherRegion) {
         if (community === 'kz') return scorcherRegion === 'beta' ? 1414 : 1441;
         return 1444;
@@ -320,9 +310,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ─── Таймер до выходных ─────────────────────────────────────────────────────
-    // RU (community='ru'): окно "The show has already started!" активно с пятницы 18:00 МСК до субботы 02:00 МСК.
-    // KZ / INTERZONE (community='kz'): окно активно с воскресенья 15:00 GMT до понедельника 00:00 GMT.
-    // Таймер останавливается, пока окно скрыто (экономия CPU/памяти).
     let weekendTimerInterval = null;
 
     function getTimeParts(timeZone) {
@@ -381,7 +368,6 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        // Считаем оставшееся время до старта
         let minutesUntilStart = startMinute - minutesOfWeek;
         if (minutesUntilStart < 0) minutesUntilStart += 7 * 1440;
         const totalSecondsUntilStart = minutesUntilStart * 60 - secondsOfDay;
