@@ -4,3 +4,5 @@ dist-scorcher/
 *.log
 .claude/
 _backup/
+CLAUDE.md
+build_release.bat
