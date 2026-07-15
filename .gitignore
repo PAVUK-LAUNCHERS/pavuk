@@ -1,0 +1,6 @@
+node_modules/
+dist/
+dist-scorcher/
+*.log
+.claude/
+_backup/

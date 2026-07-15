@@ -1,0 +1,19 @@
+{
+  "appId": "com.lifeweb.launcher",
+  "productName": "Lifeweb Launcher",
+  "win": {
+    "target": "portable",
+    "sign": false,
+    "icon": "assets/icons/PAVUK.ico"
+  },
+  "files": [
+    "main.js",
+    "preload.js",
+    "src/pavuk/**",
+    "assets/**",
+    "node_modules/**"
+  ],
+  "directories": {
+    "output": "dist"
+  }
+}

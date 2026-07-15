@@ -1,0 +1,19 @@
+{
+  "name": "lifeweb-launcher",
+  "version": "1.0.0",
+  "description": "Lifeweb & Scorcher Launcher",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:scorcher": "electron src/scorcher/scorcher_main.js",
+    "build": "electron-builder --config electron-builder.json",
+    "build:scorcher": "electron-builder --config electron-builder-scorcher.json"
+  },
+  "keywords": ["lifeweb", "byond", "launcher"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}

@@ -1,0 +1,305 @@
+@font-face {
+    font-family: 'LinBiolinum';
+    src: url('../../assets/ttf/LinBiolinum.ttf') format('truetype');
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'LinBiolinum', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #fff;
+    overflow: hidden;
+    position: relative;
+    background: #0d0500;
+}
+
+/* ─── ФОНОВОЕ ВИДЕО ─────────────────────────────────────────────────────────── */
+.background-container {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+}
+
+#bg-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+#sandstorm-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+    z-index: 2;
+}
+
+#sandstorm-video.active { opacity: 1; }
+
+/* ─── ЗЕРНО: ФОНОВЫЙ КАНВАС ─────────────────────────────────────────────────── */
+#grain-bg {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.04;           /* едва заметное */
+    /* без mix-blend-mode — чистое наложение поверх видео */
+}
+
+/* ─── ОВЕРЛЕИ ────────────────────────────────────────────────────────────────── */
+.vignette {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center,
+        transparent 25%,
+        rgba(5, 2, 0, 0.5) 65%,
+        rgba(5, 2, 0, 0.82) 100%
+    );
+    pointer-events: none;
+    z-index: 1;
+}
+
+.heat-lines {
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(255, 80, 0, 0.03) 0px,
+        transparent 1px,
+        transparent 3px,
+        rgba(255, 80, 0, 0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 1;
+    animation: heat-shimmer 6s linear infinite;
+}
+
+@keyframes heat-shimmer {
+    0%   { transform: translateY(0);   opacity: 0.4; }
+    50%  { transform: translateY(6px); opacity: 0.7; }
+    100% { transform: translateY(0);   opacity: 0.4; }
+}
+
+/* ─── ГЛАВНЫЙ КОНТЕЙНЕР ──────────────────────────────────────────────────────── */
+.container {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    z-index: 2;
+}
+
+/* ─── СЕКЦИЯ ЛОГО ────────────────────────────────────────────────────────────── */
+.logo-section {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    padding: 0 0 0 60px;
+    flex: 0 0 auto;
+}
+
+.logo-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.logo-glow {
+    position: absolute;
+    inset: -40px;
+    background: radial-gradient(ellipse at center,
+        rgba(210, 25, 0, 0.5)  0%,
+        rgba(160, 15, 0, 0.28) 45%,
+        transparent 72%
+    );
+    border-radius: 50%;
+    filter: blur(22px);
+    animation: glow-pulse 3s ease-in-out infinite;
+    z-index: 0;
+}
+
+@keyframes glow-pulse {
+    0%, 100% { opacity: 0.7; transform: scale(1);    }
+    50%       { opacity: 1;   transform: scale(1.07); }
+}
+
+.logo-img {
+    position: relative;
+    z-index: 1;
+    max-width: 900px;
+    width: 78vw;
+    max-height: 62vh;
+    object-fit: contain;
+    filter:
+        url(#logo-grain)
+        drop-shadow(0 0 22px rgba(220, 40,  0, 0.9))
+        drop-shadow(0 0 50px rgba(180, 20,  0, 0.6))
+        drop-shadow(0 0 90px rgba(130, 8,   0, 0.35));
+    animation: logo-flicker 9s ease-in-out infinite;
+}
+
+@keyframes logo-flicker {
+    0%, 91%, 100% { opacity: 1;    }
+    93%            { opacity: 0.86; }
+    95%            { opacity: 1;    }
+    97%            { opacity: 0.80; }
+}
+
+/* ─── СЕКЦИЯ СЕРВЕРОВ ────────────────────────────────────────────────────────── */
+.servers-section {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding-left: 80px;
+    flex: 0 0 auto;
+    margin-top: 28px;
+}
+
+.servers {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+
+.server-button {
+    font-family: 'LinBiolinum', serif;
+    font-size: 2rem;
+    font-weight: bold;
+    letter-spacing: 4px;
+    color: #ff6a00;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 12px 0;
+    text-align: left;
+    text-shadow:
+        0 0 12px rgba(255, 100, 0, 0.6),
+        0 2px 6px rgba(0, 0, 0, 0.9);
+    transition: all 0.22s ease;
+    position: relative;
+}
+
+.server-button:hover {
+    color: #ffaa44;
+    text-shadow:
+        0 0 22px rgba(255, 130, 0, 1),
+        0 0 40px rgba(255, 80,  0, 0.55),
+        0 2px 6px rgba(0,   0,  0, 0.9);
+    transform: translateX(8px);
+}
+
+.server-button:active {
+    transform: translateX(4px);
+    color: #ff4400;
+}
+
+/* ─── FOOTER ─────────────────────────────────────────────────────────────────── */
+.footer {
+    position: absolute;
+    bottom: 22px;
+    left: 80px;
+}
+
+#status-text {
+    font-family: 'LinBiolinum', serif;
+    font-size: 0.95rem;
+    color: #ff6a00;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px rgba(255, 100, 0, 0.7);
+    margin: 0 0 4px 0;
+    display: none;
+    animation: status-pulse 1.5s ease-in-out infinite;
+}
+
+#status-text:not(:empty) { display: block; }
+
+@keyframes status-pulse {
+    0%, 100% { opacity: 1;    }
+    50%       { opacity: 0.2; }
+}
+
+#auto-connect-info {
+    font-family: 'LinBiolinum', serif;
+    font-size: 0.8rem;
+    color: #ffcc44;
+    letter-spacing: 1px;
+    text-shadow: 0 0 8px rgba(255, 200, 0, 0.35);
+    margin: 0 0 4px 0;
+    display: none;
+}
+
+#auto-connect-info:not(:empty) { display: block; }
+
+#weekend-timer {
+    font-family: 'LinBiolinum', serif;
+    font-size: 0.85rem;
+    color: #886644;
+    letter-spacing: 1px;
+    text-shadow: 0 2px 5px rgba(0, 0, 0, 0.9);
+    margin: 0;
+}
+
+/* ─── КНОПКА НАСТРОЕК ────────────────────────────────────────────────────────── */
+.settings-button {
+    position: fixed;
+    top: 26px;
+    right: 26px;
+    width: 54px;
+    height: 54px;
+    background: rgba(15, 8, 0, 0.75);
+    border: 1px solid rgba(255, 100, 0, 0.3);
+    border-radius: 10px;
+    color: #ff6a00;
+    cursor: pointer;
+    transition: all 0.32s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    backdrop-filter: blur(6px);
+    overflow: hidden;
+}
+
+.settings-button svg {
+    width: 25px;
+    height: 25px;
+    transition: transform 0.5s ease;
+}
+
+.settings-button:hover {
+    background: rgba(30, 12, 0, 0.9);
+    border-color: #ff6a00;
+    box-shadow: 0 0 18px rgba(255, 100, 0, 0.45), inset 0 0 10px rgba(255, 80, 0, 0.15);
+    transform: scale(1.06);
+}
+
+.settings-button:hover svg { transform: rotate(120deg); color: #ffaa44; }
+.settings-button:active    { transform: scale(0.94); }
+
+.settings-button::before {
+    content: '';
+    position: absolute;
+    inset: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255, 100, 0, 0.12) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.settings-button:hover::before { opacity: 1; }

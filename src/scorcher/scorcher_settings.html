@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings — Scorcher</title>
+    <style>
+        @font-face {
+            font-family: 'LinBiolinum';
+            src: url('../../assets/ttf/LinBiolinum.ttf') format('truetype');
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        ::-webkit-scrollbar { width: 7px; }
+        ::-webkit-scrollbar-track { background: rgba(10,5,0,0.8); }
+        ::-webkit-scrollbar-thumb {
+            background: #cc4400;
+            border-radius: 4px;
+            box-shadow: 0 0 8px rgba(200,60,0,0.6);
+        }
+        ::-webkit-scrollbar-thumb:hover { background: #ff5500; }
+
+        body {
+            font-family: 'LinBiolinum', 'Segoe UI', sans-serif;
+            color: #fff;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Фон: marble-bg.png без блюра и затемнения */
+        .bg-container {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            background-image: url('../../assets/img/Scorcher/Settings/marble-bg.png');
+            background-size: cover;
+            background-position: center;
+        }
+
+        .heat-lines {
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(255, 60, 0, 0.04) 0px,
+                transparent 1px,
+                transparent 3px,
+                rgba(255, 60, 0, 0.04) 4px
+            );
+            pointer-events: none;
+            z-index: 2;
+            opacity: 0.5;
+        }
+
+        .content {
+            position: relative;
+            z-index: 3;
+            padding: 22px 28px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            overflow-y: auto;
+        }
+
+        h1 {
+            font-size: 1.7rem;
+            color: #ff6a00;
+            text-align: center;
+            text-shadow:
+                0 0 12px rgba(255, 80, 0, 0.8),
+                0 0 30px rgba(200, 40, 0, 0.4);
+            letter-spacing: 5px;
+            margin-bottom: 4px;
+        }
+
+        .setting-item {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            transition: all 0.3s ease;
+        }
+
+        .setting-item.hidden { display: none; }
+
+        label {
+            font-size: 0.82rem;
+            color: #ffaa66;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            background: rgba(200, 80, 0, 0.15);
+            border: 1px solid rgba(200, 80, 0, 0.35);
+            border-radius: 4px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #ff6a00;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(255, 100, 0, 0.9);
+        }
+
+        select, input[type="time"] {
+            background: rgba(20, 8, 0, 0.9);
+            border: 1px solid rgba(200, 80, 0, 0.5);
+            color: #fff;
+            padding: 9px 10px;
+            font-family: 'LinBiolinum', sans-serif;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        select:focus, input[type="time"]:focus {
+            border-color: #ff6a00;
+            box-shadow: 0 0 8px rgba(255, 100, 0, 0.3);
+        }
+
+        select option { background: #1a0800; color: #ffaa66; }
+
+        .volume-value {
+            text-align: center;
+            font-size: 1.15rem;
+            color: #ff6a00;
+            font-weight: bold;
+            text-shadow: 0 0 8px rgba(255, 100, 0, 0.5);
+        }
+
+        .community-toggle {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        .flag-btn {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            background: rgba(20, 8, 0, 0.9);
+            border: 1px solid rgba(200, 80, 0, 0.4);
+            color: #ffaa66;
+            padding: 10px 8px;
+            cursor: pointer;
+            font-family: 'LinBiolinum', sans-serif;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            transition: all 0.2s ease;
+        }
+
+        .flag-btn .flag-emoji {
+            width: 48px;
+            height: 32px;
+            object-fit: cover;
+            border-radius: 3px;
+            box-shadow: 0 0 6px rgba(0,0,0,0.6);
+        }
+
+        .flag-btn:hover {
+            border-color: rgba(255, 100, 0, 0.7);
+        }
+
+        .flag-btn.active {
+            border-color: #ff6a00;
+            background: rgba(255, 100, 0, 0.15);
+            box-shadow: 0 0 10px rgba(255, 100, 0, 0.5);
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-container"></div>
+    <div class="heat-lines"></div>
+
+    <div class="content">
+        <h1>SETTINGS</h1>
+
+        <div class="setting-item">
+            <label>COMM CHANNEL VOLUME</label>
+            <input type="range" id="volume" min="0" max="100" value="50">
+            <span class="volume-value" id="volume-value">50%</span>
+        </div>
+
+        <div class="setting-item">
+            <label>WHICH PART OF THE COMMUNITY</label>
+            <div class="community-toggle">
+                <button type="button" class="flag-btn" id="community-ru" data-community="ru">
+                    <img class="flag-emoji" src="../../assets/icons/ruzone.png" alt="RUZONE">
+                    <span>RUZONE</span>
+                </button>
+                <button type="button" class="flag-btn" id="community-kz" data-community="kz">
+                    <img class="flag-emoji" src="../../assets/icons/izone.png" alt="INTERZONE">
+                    <span>INTERZONE</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="setting-item hidden" id="region-server-container">
+            <label>SERVER</label>
+            <select id="region-server">
+                <option value="alpha">ALPHA</option>
+                <option value="beta">BETA</option>
+            </select>
+        </div>
+
+        <div class="setting-item">
+            <label>AUTO-CONNECT TARGET</label>
+            <select id="auto-server">
+                <option value="">DISABLED</option>
+                <option value="byond://eu1.lfwb.at:1444">EUROPE I</option>
+                <option value="byond://eu2.lfwb.at:1444">EUROPE II</option>
+                <option value="byond://eu3.lfwb.at:1444">EUROPE III</option>
+                <option value="byond://us.lfwb.at:1444">US</option>
+            </select>
+        </div>
+
+        <div class="setting-item" id="auto-time-container">
+            <label>CONNECT AT (TIME)</label>
+            <input type="time" id="auto-time" value="12:00">
+        </div>
+    </div>
+
+    <script>
+        const elements = {
+            volume:           document.getElementById('volume'),
+            volumeVal:        document.getElementById('volume-value'),
+            autoServer:       document.getElementById('auto-server'),
+            autoTime:         document.getElementById('auto-time'),
+            autoTimeContainer:document.getElementById('auto-time-container'),
+            communityRu:      document.getElementById('community-ru'),
+            communityKz:      document.getElementById('community-kz'),
+            regionServer:     document.getElementById('region-server'),
+            regionServerContainer: document.getElementById('region-server-container'),
+        };
+
+        let currentCommunity   = 'ru';
+        let currentRegionServer = 'alpha';
+
+        const SERVER_HOSTS = [
+            { host: 'eu1.lfwb.at', label: 'EUROPE I' },
+            { host: 'eu2.lfwb.at', label: 'EUROPE II' },
+            { host: 'eu3.lfwb.at', label: 'EUROPE III' },
+            { host: 'us.lfwb.at',  label: 'US' }
+        ];
+
+        function getPortForCommunity(community, regionServer) {
+            if (community === 'kz') return regionServer === 'beta' ? 1414 : 1441;
+            return 1444;
+        }
+
+        function rebuildAutoServerOptions(community, regionServer, preserveValue) {
+            const port = getPortForCommunity(community, regionServer);
+            elements.autoServer.innerHTML = '<option value="">DISABLED</option>' +
+                SERVER_HOSTS.map(s => `<option value="byond://${s.host}:${port}">${s.label}</option>`).join('');
+            if (preserveValue) {
+                const host = preserveValue.replace('byond://', '').replace(/:\d+$/, '');
+                const match = `byond://${host}:${port}`;
+                if ([...elements.autoServer.options].some(o => o.value === match)) {
+                    elements.autoServer.value = match;
+                }
+            }
+        }
+
+        function setCommunity(community, skipSave) {
+            currentCommunity = community;
+            elements.communityRu.classList.toggle('active', community === 'ru');
+            elements.communityKz.classList.toggle('active', community === 'kz');
+            elements.regionServerContainer.classList.toggle('hidden', community !== 'kz');
+            const prevValue = elements.autoServer.value;
+            rebuildAutoServerOptions(community, currentRegionServer, prevValue);
+            toggleAutoTime();
+            if (!skipSave) save();
+        }
+
+        function setRegionServer(regionServer, skipSave) {
+            currentRegionServer = regionServer;
+            elements.regionServer.value = regionServer;
+            const prevValue = elements.autoServer.value;
+            rebuildAutoServerOptions(currentCommunity, regionServer, prevValue);
+            if (!skipSave) save();
+        }
+
+        function toggleAutoTime() {
+            elements.autoTimeContainer.classList.toggle('hidden', elements.autoServer.value === '');
+        }
+
+        async function loadSettings() {
+            if (!window.electronAPI) return;
+            const s = await window.electronAPI.getSettings();
+            elements.volume.value        = s.volume * 100;
+            elements.volumeVal.textContent = elements.volume.value + '%';
+            currentCommunity    = s.community || 'ru';
+            currentRegionServer = s.scorcherRegion || 'alpha';
+            elements.communityRu.classList.toggle('active', currentCommunity === 'ru');
+            elements.communityKz.classList.toggle('active', currentCommunity === 'kz');
+            elements.regionServerContainer.classList.toggle('hidden', currentCommunity !== 'kz');
+            elements.regionServer.value = currentRegionServer;
+            rebuildAutoServerOptions(currentCommunity, currentRegionServer, s.autoServer || '');
+            elements.autoTime.value      = s.autoTime   || '12:00';
+            toggleAutoTime();
+        }
+
+        function save() {
+            if (!window.electronAPI) return;
+            window.electronAPI.saveSettings({
+                volume:     elements.volume.value / 100,
+                autoServer: elements.autoServer.value,
+                autoTime:   elements.autoTime.value,
+                community:  currentCommunity,
+                scorcherRegion: currentRegionServer
+            });
+            window.electronAPI.setVolume(elements.volume.value / 100);
+        }
+
+        elements.communityRu.addEventListener('click', () => setCommunity('ru'));
+        elements.communityKz.addEventListener('click', () => setCommunity('kz'));
+        elements.regionServer.addEventListener('change', () => setRegionServer(elements.regionServer.value));
+
+        elements.volume.addEventListener('input', () => {
+            elements.volumeVal.textContent = elements.volume.value + '%';
+            save();
+        });
+        elements.autoServer.addEventListener('change', () => { toggleAutoTime(); save(); });
+        elements.autoTime.addEventListener('change', save);
+
+        loadSettings();
+    </script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "appId": "com.scorcher.launcher",
+  "productName": "Scorcher Launcher",
+  "win": {
+    "target": "portable",
+    "sign": false,
+    "icon": "assets/icons/SCOROBEY.ico"
+  },
+  "files": [
+    "main.js",
+    "preload.js",
+    "src/scorcher/**",
+    "assets/**",
+    "node_modules/**"
+  ],
+  "extraMetadata": {
+    "main": "src/scorcher/scorcher_main.js"
+  },
+  "directories": {
+    "output": "dist-scorcher"
+  }
+}

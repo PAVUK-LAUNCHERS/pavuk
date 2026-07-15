@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings</title>
+    <style>
+        @font-face {
+            font-family: 'LinBiolinum';
+            src: url('../../assets/ttf/LinBiolinum.ttf') format('truetype');
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* Custom Cyberpunk Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(20, 20, 20, 0.8);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #ff6666;
+            border-radius: 4px;
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #ff3333;
+        }
+
+        body {
+            font-family: 'LinBiolinum', 'Segoe UI', sans-serif;
+            background: #000;
+            color: #fff;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .bg-container {
+            position: absolute;
+            top: -5%;
+            left: -5%;
+            width: 110%;
+            height: 110%;
+            z-index: -1;
+            filter: blur(3px) brightness(0.7);
+            background-size: cover;
+            background-position: center;
+        }
+
+        .content {
+            position: relative;
+            z-index: 1;
+            padding: 20px 30px;
+            background: rgba(0, 0, 0, 0.7);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+            border-left: 2px solid rgba(255, 102, 102, 0.2);
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            color: #ff6666;
+            text-align: center;
+            text-shadow: 0 0 15px rgba(255, 0, 0, 0.7);
+            letter-spacing: 4px;
+            margin-bottom: 5px;
+        }
+
+        .setting-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .setting-item.hidden {
+            display: none;
+        }
+
+        label {
+            font-size: 0.85rem;
+            color: #ffaaaa;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 102, 102, 0.1);
+            border: 1px solid rgba(255, 102, 102, 0.3);
+            border-radius: 5px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #ff6666;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.8);
+        }
+
+        select, input[type="number"], input[type="time"] {
+            background: rgba(30, 30, 30, 0.9);
+            border: 1px solid rgba(255, 102, 102, 0.5);
+            color: #fff;
+            padding: 10px;
+            font-family: 'LinBiolinum', sans-serif;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        select:focus, input[type="number"]:focus, input[type="time"]:focus {
+            border-color: #ff6666;
+        }
+
+        .volume-value {
+            text-align: center;
+            font-size: 1.2rem;
+            color: #ff6666;
+            font-weight: bold;
+        }
+
+        .community-toggle {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        .flag-btn {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            background: rgba(30, 30, 30, 0.9);
+            border: 1px solid rgba(255, 102, 102, 0.3);
+            color: #ffaaaa;
+            padding: 10px 8px;
+            cursor: pointer;
+            font-family: 'LinBiolinum', sans-serif;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            transition: all 0.2s ease;
+        }
+
+        .flag-btn .flag-emoji {
+            width: 48px;
+            height: 32px;
+            object-fit: cover;
+            border-radius: 3px;
+            box-shadow: 0 0 6px rgba(0,0,0,0.6);
+        }
+
+        .flag-btn:hover {
+            border-color: rgba(255, 102, 102, 0.6);
+        }
+
+        .flag-btn.active {
+            border-color: #ff6666;
+            background: rgba(255, 102, 102, 0.15);
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.4);
+            color: #fff;
+        }
+
+        .scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.1) 0px,
+                transparent 1px,
+                transparent 2px,
+                rgba(0, 0, 0, 0.1) 3px
+            );
+            pointer-events: none;
+            z-index: 2;
+            opacity: 0.2;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-container" id="bg-container"></div>
+    <div class="scanlines"></div>
+
+    <div class="content">
+        <h1>SETTINGS</h1>
+
+        <div class="setting-item">
+            <label>COMM CHANNEL VOLUME</label>
+            <input type="range" id="volume" min="0" max="100" value="50">
+            <span class="volume-value" id="volume-value">50%</span>
+        </div>
+
+        <div class="setting-item">
+            <label>WHICH PART OF THE COMMUNITY</label>
+            <div class="community-toggle">
+                <button type="button" class="flag-btn" id="community-ru" data-community="ru">
+                    <img class="flag-emoji" src="../../assets/icons/ruzone.png" alt="RUZONE">
+                    <span>RUZONE</span>
+                </button>
+                <button type="button" class="flag-btn" id="community-kz" data-community="kz">
+                    <img class="flag-emoji" src="../../assets/icons/izone.png" alt="INTERZONE">
+                    <span>INTERZONE</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="setting-item">
+            <label>AUTO-CONNECT TARGET</label>
+            <select id="auto-server">
+                <option value="">DISABLED</option>
+                <option value="byond://eu1.lfwb.at:1984">EUROPE I</option>
+                <option value="byond://eu2.lfwb.at:1984">EUROPE II</option>
+                <option value="byond://eu3.lfwb.at:1984">EUROPE III</option>
+                <option value="byond://us.lfwb.at:1984">US</option>
+            </select>
+        </div>
+
+        <div class="setting-item" id="auto-time-container">
+            <label>CONNECT AT (TIME)</label>
+            <input type="time" id="auto-time" value="12:00">
+        </div>
+    </div>
+
+    <script>
+        const elements = {
+            volume: document.getElementById('volume'),
+            volumeVal: document.getElementById('volume-value'),
+            autoServer: document.getElementById('auto-server'),
+            autoTime: document.getElementById('auto-time'),
+            autoTimeContainer: document.getElementById('auto-time-container'),
+            bg: document.getElementById('bg-container'),
+            communityRu: document.getElementById('community-ru'),
+            communityKz: document.getElementById('community-kz')
+        };
+
+        let currentCommunity = 'ru';
+
+        const SERVER_HOSTS = [
+            { host: 'eu1.lfwb.at', label: 'EUROPE I' },
+            { host: 'eu2.lfwb.at', label: 'EUROPE II' },
+            { host: 'eu3.lfwb.at', label: 'EUROPE III' },
+            { host: 'us.lfwb.at',  label: 'US' }
+        ];
+
+        function getPortForCommunity(community) {
+            return community === 'kz' ? 1923 : 1984;
+        }
+
+        function rebuildAutoServerOptions(community, preserveValue) {
+            const port = getPortForCommunity(community);
+            elements.autoServer.innerHTML = '<option value="">DISABLED</option>' +
+                SERVER_HOSTS.map(s => `<option value="byond://${s.host}:${port}">${s.label}</option>`).join('');
+            if (preserveValue) {
+                // Пытаемся восстановить выбор по host, т.к. порт мог измениться
+                const host = preserveValue.replace('byond://', '').replace(/:\d+$/, '');
+                const match = `byond://${host}:${port}`;
+                if ([...elements.autoServer.options].some(o => o.value === match)) {
+                    elements.autoServer.value = match;
+                }
+            }
+        }
+
+        function setCommunity(community, skipSave) {
+            currentCommunity = community;
+            elements.communityRu.classList.toggle('active', community === 'ru');
+            elements.communityKz.classList.toggle('active', community === 'kz');
+            const prevValue = elements.autoServer.value;
+            rebuildAutoServerOptions(community, prevValue);
+            toggleAutoTime();
+            if (!skipSave) save();
+        }
+
+        const images = ['Welcome1.png', 'Welcome2.png', 'Welcome3.png', 'Welcome4.png', 'Welcome5.png', 'Welcome6.png'];
+        elements.bg.style.backgroundImage = `url('../../assets/img/Settings/${images[Math.floor(Math.random() * images.length)]}')`;
+
+        function toggleAutoTime() {
+            if (elements.autoServer.value === "") {
+                elements.autoTimeContainer.classList.add('hidden');
+            } else {
+                elements.autoTimeContainer.classList.remove('hidden');
+            }
+        }
+
+        async function loadSettings() {
+            if (window.electronAPI) {
+                const settings = await window.electronAPI.getSettings();
+                elements.volume.value = settings.volume * 100;
+                elements.volumeVal.textContent = elements.volume.value + '%';
+                currentCommunity = settings.community || 'ru';
+                elements.communityRu.classList.toggle('active', currentCommunity === 'ru');
+                elements.communityKz.classList.toggle('active', currentCommunity === 'kz');
+                rebuildAutoServerOptions(currentCommunity, settings.autoServer || '');
+                elements.autoTime.value = settings.autoTime || "12:00";
+                toggleAutoTime();
+            }
+        }
+
+        function save() {
+            if (window.electronAPI) {
+                window.electronAPI.saveSettings({
+                    volume: elements.volume.value / 100,
+                    autoServer: elements.autoServer.value,
+                    autoTime: elements.autoTime.value,
+                    community: currentCommunity
+                });
+                window.electronAPI.setVolume(elements.volume.value / 100);
+            }
+        }
+
+        elements.communityRu.addEventListener('click', () => setCommunity('ru'));
+        elements.communityKz.addEventListener('click', () => setCommunity('kz'));
+
+        elements.volume.addEventListener('input', () => {
+            elements.volumeVal.textContent = elements.volume.value + '%';
+            save();
+        });
+        
+        elements.autoServer.addEventListener('change', () => {
+            toggleAutoTime();
+            save();
+        });
+        
+        elements.autoTime.addEventListener('change', save);
+
+        loadSettings();
+    </script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lifeweb Launcher</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="background-container">
+        <img id="background-image" src="../../assets/img/Back1.png" alt="Background">
+        <video id="flash-video" src="../../assets/img/FLASH.mp4" muted></video>
+        <video id="flash01-video" src="../../assets/img/FLASH01.mp4" muted></video>
+    </div>
+
+    <div class="vignette"></div>
+    <div class="scanlines"></div>
+
+    <div class="container">
+        <div class="header">
+            <h1 class="logo-text">LIFEWEB II</h1>
+        </div>
+
+        <div class="servers">
+            <button class="server-button" data-server="byond://eu1.lfwb.at:1984">
+                EUROPE I
+            </button>
+
+            <button class="server-button" data-server="byond://eu2.lfwb.at:1984">
+                EUROPE II
+            </button>
+
+            <button class="server-button" data-server="byond://eu3.lfwb.at:1984">
+                EUROPE III
+            </button>
+
+            <button class="server-button" data-server="byond://us.lfwb.at:1984">
+                US
+            </button>
+        </div>
+
+        <button class="settings-button" id="settings-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+        </button>
+
+        <div class="footer">
+            <p id="status-text"></p>
+            <p id="auto-connect-info"></p>
+            <p id="weekend-timer"></p>
+        </div>
+    </div>
+
+    <audio id="background-music" src="../../assets/sounds/music.mp3" loop></audio>
+    <audio id="click-sound" src="../../assets/sounds/click.MP3"></audio>
+
+    <script src="script.js"></script>
+</body>
+</html>

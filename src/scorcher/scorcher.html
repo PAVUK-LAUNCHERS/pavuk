@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scorcher Launcher</title>
+    <link rel="stylesheet" href="scorcher.css">
+</head>
+<body>
+
+    <!-- SVG-фильтры -->
+    <svg style="position:absolute;width:0;height:0;overflow:hidden" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <!--
+                Зерно строго по непрозрачным пикселям лого:
+                1. Генерируем шум
+                2. Сжимаем к нейтральному 50% серому — soft-light не сдвигает яркость
+                3. feComposite operator="in" noise IN SourceGraphic:
+                   результат получает АЛЬФУ из SourceGraphic — шум исчезает там где лого прозрачно
+                4. feBlend soft-light: накладываем подготовленный шум на оригинал
+                   — только непрозрачные пиксели получают текстуру
+            -->
+            <filter id="logo-grain" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
+                <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" stitchTiles="stitch" result="noise"/>
+                <!-- Расширяем диапазон шума вокруг нейтрального серого (интенсивнее, чем было) -->
+                <feColorMatrix type="matrix"
+                    values="0.55 0 0 0 0.22
+                            0.55 0 0 0 0.22
+                            0.55 0 0 0 0.22
+                            0    0 0 1 0"
+                    in="noise" result="neutralNoise"/>
+                <!-- Ключ: обрезаем шум по альфе лого ДО blend — прозрачное = нет шума -->
+                <feComposite in="neutralNoise" in2="SourceGraphic" operator="in" result="maskedNoise"/>
+                <!-- Теперь накладываем уже замаскированный шум на оригинал -->
+                <feBlend in="SourceGraphic" in2="maskedNoise" mode="soft-light"/>
+            </filter>
+        </defs>
+    </svg>
+
+    <div class="background-container">
+        <video id="bg-video" src="../../assets/img/Scorcher/SCORCHING_MAIN.mp4" autoplay loop muted playsinline></video>
+        <video id="sandstorm-video" src="../../assets/img/Scorcher/SANDSTORM.mp4" muted playsinline></video>
+    </div>
+
+    <!-- Зерно на весь фон -->
+    <canvas id="grain-bg"></canvas>
+
+    <div class="vignette"></div>
+    <div class="heat-lines"></div>
+
+    <div class="container">
+
+        <!-- Логотип сверху -->
+        <div class="logo-section">
+            <div class="logo-wrapper">
+                <div class="logo-glow"></div>
+                <img class="logo-img" src="../../assets/img/Scorcher/SCORCHER_THE_HARAMONY.png" alt="Scorcher: The Harmony">
+            </div>
+        </div>
+
+        <!-- Кнопки серверов снизу, слева -->
+        <div class="servers-section">
+            <div class="servers">
+                <button class="server-button" data-server="byond://eu1.lfwb.at:1444">EUROPE I</button>
+                <button class="server-button" data-server="byond://eu2.lfwb.at:1444">EUROPE II</button>
+                <button class="server-button" data-server="byond://eu3.lfwb.at:1444">EUROPE III</button>
+                <button class="server-button" data-server="byond://us.lfwb.at:1444">US</button>
+            </div>
+        </div>
+
+        <!-- Статусы -->
+        <div class="footer">
+            <p id="status-text"></p>
+            <p id="auto-connect-info"></p>
+            <p id="weekend-timer"></p>
+        </div>
+
+    </div>
+
+    <!-- Кнопка настроек -->
+    <button class="settings-button" id="settings-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+    </button>
+
+    <audio id="background-music" src="../../assets/sounds/scorcher_music.mp3" loop></audio>
+    <audio id="click-sound" src="../../assets/sounds/click.MP3"></audio>
+
+    <script src="scorcher_script.js"></script>
+</body>
+</html>
