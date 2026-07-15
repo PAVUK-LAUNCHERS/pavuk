@@ -5,7 +5,6 @@ const fs = require('fs');
 const os = require('os');
 
 // ─── Базовые пути ─────────────────────────────────────────────────────────────
-// __dirname здесь = src/scorcher/, поэтому поднимаемся на два уровня до корня
 const ROOT         = path.resolve(__dirname, '..', '..');
 const ASSETS       = path.join(ROOT, 'assets');
 const SRC_SCORCHER = path.join(ROOT, 'src', 'scorcher');
@@ -16,16 +15,6 @@ let isHidden     = false;
 let tray         = null;
 
 // ─── Состояние ────────────────────────────────────────────────────────────────
-// Конечный автомат подключения DreamSeeker:
-//   'IDLE'      — DS не запущен нами, лаунчер виден
-//   'LAUNCHING' — мы инициировали запуск (kill старого -> open byond://), ждём появления DS
-//   'PLAYING'   — DS подтверждён в процессах, лаунчер скрыт
-//
-// Переходы:
-//   IDLE      --(клик по серверу / авто-таймер)--> LAUNCHING
-//   LAUNCHING --(DS найден в tasklist)-------------> PLAYING
-//   LAUNCHING --(дедлайн истёк, DS не появился)----> IDLE  (+ показать лаунчер)
-//   PLAYING   --(DS исчез из tasklist)--------------> IDLE  (+ показать лаунчер)
 const state = {
     volume: 0.5,
     autoServer: '',
@@ -33,22 +22,17 @@ const state = {
     lastScheduledRun: null,
     dsPhase: 'IDLE',
     launchDeadline: 0,
-    childSeen: false,  // видели ли дочерний процесс dreamseeker.exe в текущей сессии запуска
-    community: 'ru',   // 'ru' = русские порты (1444), 'kz' = английские (выбор сервера ниже)
-    scorcherRegion: 'alpha' // актуально только при community==='kz': 'alpha' (1441) или 'beta' (1414)
+    childSeen: false,
+    community: 'ru',
+    scorcherRegion: 'alpha'
 };
 
-const MONITOR_INTERVAL_MS = 2000;   // как часто опрашиваем tasklist
-const LAUNCH_GRACE_MS     = 30000;  // сколько ждём появления DS после запуска
+const MONITOR_INTERVAL_MS = 2000;
+const LAUNCH_GRACE_MS     = 30000;
 
-// ─── Проверка обновлений ─────────────────────────────────────────────
-// Бэкенд — основной источник версии, GitHub Releases — fallback, если бэкенд недоступен.
-// Мягкое уведомление без принудительной блокировки запуска. Версия общая для
-// Lifeweb и Scorcher (один RAR для обоих), поэтому логика идентична main.js.
-// TODO: заполнить после деплоя бэкенда и публикации репозитория на GitHub.
-const BACKEND_URL  = 'https://REPLACE_ME.onrender.com'; // без слэша в конце
-const GITHUB_REPO  = 'REPLACE_ME/REPLACE_ME';           // формат owner/repo
-const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;    // раз в 4 часа
+const BACKEND_URL  = 'https://REPLACE_ME.onrender.com';
+const GITHUB_REPO  = 'REPLACE_ME/REPLACE_ME';
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 function compareVersions(a, b) {
     const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -258,7 +242,6 @@ function isDreamSeekerRunning() {
 function killDreamSeeker() {
     return new Promise((resolve) => {
         exec('taskkill /F /IM dreamseeker.exe /T', () => {
-            // taskkill возвращает ошибку, если процесс не найден — это нормальный случай, не баг.
             resolve();
         });
     });
@@ -285,18 +268,12 @@ function showLauncher() {
 }
 
 // ─── Запуск DS ────────────────────────────────────────────────────────────────
-// Единственная точка входа для любого запуска (ручной и авто).
-// Последовательность СТРОГО такая, как требуется:
-//   1. Убить все процессы dreamseeker.exe и дождаться завершения
-//   2. Открыть byond:// ссылку (DreamSeeker запускается сам)
-//   3. Скрыть лаунчер
-//   4. Дальше processMonitorTask следит за появлением/исчезновением процесса
 async function launchDreamSeeker(url, statusText) {
-    if (state.dsPhase === 'LAUNCHING') return; // уже идёт запуск — игнорируем повторный клик
+    if (state.dsPhase === 'LAUNCHING') return;
 
     state.dsPhase = 'LAUNCHING';
     state.launchDeadline = Date.now() + LAUNCH_GRACE_MS;
-    state.childSeen = false; // новая сессия запуска — сбрасываем флаг
+    state.childSeen = false;
     sendStatus(statusText || 'CONNECTING...');
 
     await killDreamSeeker();
@@ -313,8 +290,6 @@ async function processMonitorTask() {
 
     switch (state.dsPhase) {
         case 'IDLE':
-            // Ничего не делаем. Лаунчер должен быть виден в этом состоянии;
-            // подстраховка на случай рассинхрона isHidden/dsPhase.
             if (isHidden) showLauncher();
             break;
 
@@ -324,7 +299,6 @@ async function processMonitorTask() {
                 if (hasChild) state.childSeen = true;
                 sendStatus('');
             } else if (Date.now() > state.launchDeadline) {
-                // DS не поднялся за отведённое время — считаем провалом запуска
                 state.dsPhase = 'IDLE';
                 showLauncher();
             }
@@ -332,21 +306,15 @@ async function processMonitorTask() {
 
         case 'PLAYING':
             if (!running) {
-                // Процессов вообще не осталось — игра закрылась штатно
                 state.dsPhase = 'IDLE';
                 showLauncher();
             } else if (hasChild) {
-                // Реальный геймплей подтверждён (дочерний процесс есть)
                 state.childSeen = true;
             } else if (state.childSeen) {
-                // Дочерний процесс был, а теперь пропал, хотя dreamseeker.exe ещё в списке —
-                // это зомби (пустая оболочка после закрытия игры). Добиваем и возвращаем лаунчер.
                 await killDreamSeeker();
                 state.dsPhase = 'IDLE';
                 showLauncher();
             }
-            // если dreamseeker.exe есть, дочернего процесса нет, и childSeen ещё не было —
-            // это загрузочное окно, просто ждём дальше
             break;
     }
 }
@@ -359,7 +327,7 @@ async function timeBasedAutoConnectTask() {
     if (t === state.autoTime && state.lastScheduledRun !== t) {
         state.lastScheduledRun = t;
         const { running } = await isDreamSeekerRunning();
-        if (running) return; // DS уже запущен — не мешаем
+        if (running) return;
         handleAutoLaunch(state.autoServer);
     }
 }
