@@ -203,8 +203,8 @@ document.addEventListener('DOMContentLoaded', function () {
             updateBadge.id = 'update-badge';
             Object.assign(updateBadge.style, {
                 position: 'fixed',
-                top: '10px',
-                right: '10px',
+                bottom: '10px',
+                left: '10px',
                 zIndex: '9999',
                 background: 'rgba(20, 8, 0, 0.9)',
                 border: '1px solid #ff6a00',

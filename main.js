@@ -28,9 +28,19 @@ const state = {
 const MONITOR_INTERVAL_MS = 2000;
 const LAUNCH_GRACE_MS     = 30000;
 
-const BACKEND_URL  = 'https://REPLACE_ME.onrender.com';
-const GITHUB_REPO  = 'REPLACE_ME/REPLACE_ME';
+const BACKEND_URL  = 'https://tabula-qnxl.onrender.com';
+const GITHUB_REPO  = 'PAVUK-LAUNCHERS/pavuk';
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+
+// app.getVersion() возвращает версию Electron runtime, а не проекта, когда приложение
+// запущено не через electron-builder/asar (наш случай — PAVUK_RELEASE с голым Electron +
+// сырым main.js). Читаем версию напрямую из package.json рядом с main.js.
+let APP_VERSION = '0.0.0';
+try {
+    APP_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8')).version || APP_VERSION;
+} catch (e) {
+    console.error('Failed to read version from package.json:', e.message);
+}
 
 function compareVersions(a, b) {
     const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -55,7 +65,7 @@ async function fetchWithTimeout(url, ms) {
 }
 
 async function checkForUpdates() {
-    const currentVersion = app.getVersion();
+    const currentVersion = APP_VERSION;
     let remote = null;
 
     try {
@@ -363,12 +373,12 @@ app.whenReady().then(() => {
     setInterval(processMonitorTask,       MONITOR_INTERVAL_MS);
     setInterval(timeBasedAutoConnectTask, 10000);
     setInterval(checkForUpdates,          UPDATE_CHECK_INTERVAL_MS);
-    checkForUpdates(); // первая проверка сразу после старта
 
     mainWindow.webContents.on('did-finish-load', () => {
         if (state.autoServer)
             mainWindow.webContents.send('auto-info-update', { server: state.autoServer, time: state.autoTime });
         mainWindow.webContents.send('servers-config-update', { community: state.community });
+        checkForUpdates(); // первая проверка после того как renderer точно готов слушать IPC
     });
 });
 
