@@ -1,8 +1,9 @@
-const { app, BrowserWindow, shell, ipcMain, Tray, Menu } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, Tray, Menu, globalShortcut, nativeImage } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
 const fs = require('fs');
 const os = require('os');
+const { isDreamSeekerRunning, killDreamSeeker, stopMonitor } = require('../shared/dsProcessMonitor');
 
 // ─── Базовые пути ─────────────────────────────────────────────────────────────
 const ROOT         = path.resolve(__dirname, '..', '..');
@@ -24,11 +25,31 @@ const state = {
     launchDeadline: 0,
     childSeen: false,
     community: 'ru',
-    scorcherRegion: 'alpha'
+    scorcherRegion: 'alpha',
+    exitHotkey: 'Alt+F4'
 };
 
 const MONITOR_INTERVAL_MS = 2000;
 const LAUNCH_GRACE_MS     = 30000;
+
+// ─── Размер игровой области и нахлёст тайтлбара (окно "выпирает" из-под своей границы) ───
+// Windows всегда клипует/сглаживает контент строго по границе прямоугольника окна —
+// поэтому чтобы тайтлбар реально торчал выше обычного края, окно делается на OVERHANG_PX
+// выше игрового контента и делается прозрачным (transparent:true), а хитбокс обрезается setShape()
+// под реальный силуэт спрайта в этой полосе — см. computeTitlebarOverhangRects() ниже.
+const GAME_WIDTH   = 900;
+const GAME_HEIGHT  = 700;
+const OVERHANG_PX  = 10; // сколько пикселей ВЕРХА TASKBAR.png (900x50) торчит выше игрового прямоугольника —
+                          // строки 0–9 сплошного силуэта нет (только гем-ниша слева и скруглённый правый торец),
+                          // с 10-й строки спрайт уже полностью сплошной на всю ширину (проверено по альфе).
+                          // Значение не менялось при переходе спрайта с 900x40 на 900x50 — вырос только сам бар.
+                          //
+                          // НИЗ спрайта (строки ~41–49) тоже выступает за пределы сплошного бара (тот же гем
+                          // теперь торчит и снизу) — но это НЕ требует отдельного OVERHANG/setShape-рассчёта,
+                          // т.к. окно и так продолжается далеко вниз до игрового поля (700px) — нижний выступ
+                          // целиком попадает в уже существующий блок-прямоугольник #game-area и просто рисуется
+                          // поверх него по z-index. Спец-обработка через computeTitlebarOverhangRects() нужна
+                          // только там, где спрайт торчит ЗА ПРЕДЕЛЫ окна (сверху, y<0 в системе координат окна).
 
 const BACKEND_URL  = 'https://tabula-qnxl.onrender.com';
 const GITHUB_REPO  = 'PAVUK-LAUNCHERS/pavuk';
@@ -106,6 +127,7 @@ function loadSettingsFromDisk() {
             if (typeof data.autoTime   === 'string') state.autoTime   = data.autoTime;
             if (typeof data.community  === 'string') state.community  = data.community;
             if (typeof data.scorcherRegion === 'string') state.scorcherRegion = data.scorcherRegion;
+            if (typeof data.exitHotkey === 'string') state.exitHotkey = data.exitHotkey;
         }
     } catch (e) { console.error('Failed to load settings:', e.message); }
 }
@@ -117,9 +139,24 @@ function saveSettingsToDisk() {
             autoServer: state.autoServer,
             autoTime:   state.autoTime,
             community:  state.community,
-            scorcherRegion: state.scorcherRegion
+            scorcherRegion: state.scorcherRegion,
+            exitHotkey: state.exitHotkey
         }, null, 2), 'utf-8');
     } catch (e) { console.error('Failed to save settings:', e.message); }
+}
+
+// ─── Горячая клавиша выхода из игры (глобальная, работает даже без фокуса на окне) ───
+function registerExitHotkey() {
+    try { globalShortcut.unregisterAll(); } catch (e) {}
+    if (!state.exitHotkey) return;
+    try {
+        const ok = globalShortcut.register(state.exitHotkey, () => {
+            killDreamSeeker();
+        });
+        if (!ok) console.error('[hotkey] Не удалось зарегистрировать горячую клавишу:', state.exitHotkey, '(возможно занята другим приложением/вторым лаунчером)');
+    } catch (e) {
+        console.error('[hotkey] Некорректный accelerator:', state.exitHotkey, e.message);
+    }
 }
 
 // ─── Создание ярлыка SCOROBEY на рабочем столе (один раз при первом запуске) ──
@@ -169,15 +206,96 @@ function createTray() {
     tray.on('double-click', () => showLauncher());
 }
 
+// ─── Хитбокс окна: обрезка под силуэт тайтлбара в зоне нахлёста ────────────────
+// Окно теперь на OVERHANG_PX выше игрового контента и прозрачно — без setShape клики
+// по прозрачным углам этой полосы (за пределами реальной формы спрайта) всё равно
+// попадали бы в невидимое окно вместо рабочего стола/того что под ним. Вырезаем
+// хитбокс по реальной альфе TASKBAR.png построчно (только для полосы нахлёста —
+// ниже неё уже идёт обычный непрозрачный игровой прямоугольник, для него отдельный
+// rect на всю ширину/высоту).
+function computeTitlebarOverhangRects() {
+    const taskbarPath = path.join(ASSETS, 'img', 'Scorcher', 'TASKBAR', 'TASKBAR.png');
+    let img;
+    try {
+        img = nativeImage.createFromPath(taskbarPath);
+    } catch (e) {
+        console.error('[shape] Не удалось прочитать TASKBAR.png:', e.message);
+        return [];
+    }
+    const { width, height } = img.getSize();
+    if (!width || !height) return [];
+
+    const bitmap = img.toBitmap(); // порядок каналов не важен — альфа всегда 4-й байт пикселя
+    const rows = Math.min(OVERHANG_PX, height);
+
+    function getRuns(y) {
+        const runs = [];
+        let start = null;
+        for (let x = 0; x < width; x++) {
+            const a = bitmap[(y * width + x) * 4 + 3];
+            const opaque = a > 0;
+            if (opaque && start === null) start = x;
+            if (!opaque && start !== null) { runs.push([start, x]); start = null; }
+        }
+        if (start !== null) runs.push([start, width]);
+        return runs;
+    }
+
+    function runsEqual(a, b) {
+        if (!a || !b || a.length !== b.length) return false;
+        return a.every((r, i) => r[0] === b[i][0] && r[1] === b[i][1]);
+    }
+
+    const rects = [];
+    let prevRuns = null;
+    let rectStartY = 0;
+
+    for (let y = 0; y < rows; y++) {
+        const runs = getRuns(y);
+        if (!runsEqual(runs, prevRuns)) {
+            if (prevRuns) {
+                for (const [x0, x1] of prevRuns) {
+                    rects.push({ x: x0, y: rectStartY, width: x1 - x0, height: y - rectStartY });
+                }
+            }
+            prevRuns = runs;
+            rectStartY = y;
+        }
+    }
+    if (prevRuns) {
+        for (const [x0, x1] of prevRuns) {
+            rects.push({ x: x0, y: rectStartY, width: x1 - x0, height: rows - rectStartY });
+        }
+    }
+
+    return rects;
+}
+
+function updateWindowShape() {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (process.platform === 'darwin') return; // setShape не поддерживается на macOS, не актуально для проекта
+
+    const rects = computeTitlebarOverhangRects();
+    // Игровая область под нахлёстом — обычный непрозрачный прямоугольник, кликается целиком как раньше
+    rects.push({ x: 0, y: OVERHANG_PX, width: GAME_WIDTH, height: GAME_HEIGHT });
+
+    try {
+        mainWindow.setShape(rects);
+    } catch (e) {
+        console.error('[shape] setShape не сработал:', e.message);
+    }
+}
+
 // ─── Главное окно ─────────────────────────────────────────────────────────────
 function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 900,
-        height: 700,
+        width: GAME_WIDTH,
+        height: GAME_HEIGHT + OVERHANG_PX, // окно выше игрового контента на полосу нахлёста тайтлбара
         resizable: false,
         autoHideMenuBar: true,
-        backgroundColor: '#0d0500',
-        frame: true,
+        transparent: true,        // настоящая прозрачность окна на уровне ОС — только так тайтлбар может реально выступать за край окна
+        backgroundColor: '#00000000',
+        frame: false,
         useContentSize: true,
         webPreferences: {
             nodeIntegration: false,
@@ -188,6 +306,7 @@ function createWindow() {
     });
 
     mainWindow.loadFile(path.join(SRC_SCORCHER, 'scorcher.html'));
+    updateWindowShape(); // хитбокс не зависит от рендерера — считан один раз из альфы статичного PNG
 
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
         if (url.startsWith('byond://')) { handleLaunch(url); return { action: 'deny' }; }
@@ -229,33 +348,10 @@ function createSettingsWindow() {
     settingsWindow.on('closed', () => { settingsWindow = null; });
 }
 
-// ─── Проверка наличия живого DreamSeeker ───────────────────────────────────────
-function isDreamSeekerRunning() {
-    return new Promise((resolve) => {
-        const cmd = 'powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object {$_.Name -eq \'dreamseeker.exe\'} | Select-Object ProcessId,ParentProcessId | ConvertTo-Json -Compress"';
-        exec(cmd, (err, stdout) => {
-            if (err || !stdout || !stdout.trim()) { resolve({ running: false, hasChild: false }); return; }
-            try {
-                let parsed = JSON.parse(stdout);
-                if (!Array.isArray(parsed)) parsed = [parsed];
-                const pids = new Set(parsed.map(p => p.ProcessId));
-                const hasChild = parsed.some(p => pids.has(p.ParentProcessId));
-                resolve({ running: parsed.length > 0, hasChild });
-            } catch (e) {
-                resolve({ running: false, hasChild: false });
-            }
-        });
-    });
-}
-
-// ─── Убить все процессы DreamSeeker (ждём завершения) ──────────────────────────
-function killDreamSeeker() {
-    return new Promise((resolve) => {
-        exec('taskkill /F /IM dreamseeker.exe /T', () => {
-            resolve();
-        });
-    });
-}
+// isDreamSeekerRunning()/killDreamSeeker() теперь живут в src/shared/dsProcessMonitor.js —
+// общий постоянный PowerShell-хост вместо wmic (один на оба лаунчера быть не может —
+// каждый процесс (main.js и scorcher_main.js) полностью независим и поднимает свой собственный
+// PowerShell-хост, что совпадает с архитектурой проекта — отдельные BrowserWindow/трей/интервалы).
 
 // ─── Скрыть / показать лаунчер ────────────────────────────────────────────────
 function hideLauncher() {
@@ -344,8 +440,10 @@ async function timeBasedAutoConnectTask() {
 
 // ─── IPC ──────────────────────────────────────────────────────────────────────
 ipcMain.on('save-settings', (event, settings) => {
+    const prevHotkey = state.exitHotkey;
     Object.assign(state, settings);
     saveSettingsToDisk();
+    if (state.exitHotkey !== prevHotkey) registerExitHotkey();
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('auto-info-update', { server: state.autoServer, time: state.autoTime });
         mainWindow.webContents.send('servers-config-update', { community: state.community, scorcherRegion: state.scorcherRegion });
@@ -357,7 +455,8 @@ ipcMain.handle('get-settings', () => ({
     autoServer: state.autoServer,
     autoTime:   state.autoTime,
     community:  state.community,
-    scorcherRegion: state.scorcherRegion
+    scorcherRegion: state.scorcherRegion,
+    exitHotkey: state.exitHotkey
 }));
 
 ipcMain.on('open-settings', createSettingsWindow);
@@ -367,6 +466,8 @@ ipcMain.on('open-external-url', (event, url) => {
 ipcMain.on('set-volume',    (e, v) => { state.volume = v; if (mainWindow) mainWindow.webContents.send('update-volume', v); });
 ipcMain.on('hide-window',   () => hideLauncher());
 ipcMain.on('launch-server', (e, url) => handleLaunch(url));
+ipcMain.on('minimize-window', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize(); });
+ipcMain.on('close-window',    () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close(); });
 ipcMain.handle('get-auto-info', () => state.autoServer ? { server: state.autoServer, time: state.autoTime } : null);
 
 // ─── Старт ────────────────────────────────────────────────────────────────────
@@ -375,6 +476,7 @@ app.whenReady().then(() => {
     createWindow();
     createTray();
     createDesktopShortcut();
+    registerExitHotkey();
     setInterval(processMonitorTask,       MONITOR_INTERVAL_MS);
     setInterval(timeBasedAutoConnectTask, 10000);
     setInterval(checkForUpdates,          UPDATE_CHECK_INTERVAL_MS);
@@ -387,4 +489,5 @@ app.whenReady().then(() => {
     });
 });
 
+app.on('will-quit', () => { globalShortcut.unregisterAll(); stopMonitor(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

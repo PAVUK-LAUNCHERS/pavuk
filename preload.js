@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     openSettings: () => ipcRenderer.send('open-settings'),
     launchServer: (url) => ipcRenderer.send('launch-server', url),
+    minimizeWindow: () => ipcRenderer.send('minimize-window'),
+    closeWindow: () => ipcRenderer.send('close-window'),
     setVolume: (volume) => ipcRenderer.send('set-volume', volume),
     onVolumeUpdate: (callback) => {
         ipcRenderer.removeAllListeners('update-volume');

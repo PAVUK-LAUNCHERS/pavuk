@@ -16,14 +16,21 @@ document.addEventListener('DOMContentLoaded', function () {
     let grainCanvas = null;
     let grainCtx = null;
 
+    // Рендерим шум в 1/GRAIN_DOWNSCALE разрешении и растягиваем через CSS (width/height:100% в scorcher.css) —
+    // при opacity:0.04 деталь на полном разрешении визуально неотличима от даунскейла, а пикселей
+    // для генерации в GRAIN_DOWNSCALE² раз меньше (16x при значении 4). imageSmoothingEnabled=false
+    // не даёт браузеру размыть апскейл в блюр — зерно остаётся зерном, просто крупнее по площади пикселя.
+    const GRAIN_DOWNSCALE = 4;
+
     function initGrainBg() {
         grainCanvas = document.getElementById('grain-bg');
         if (!grainCanvas) return;
         grainCtx = grainCanvas.getContext('2d');
+        grainCtx.imageSmoothingEnabled = false;
 
         grainResizeHandler = function () {
-            grainCanvas.width  = window.innerWidth;
-            grainCanvas.height = window.innerHeight;
+            grainCanvas.width  = Math.ceil(window.innerWidth  / GRAIN_DOWNSCALE);
+            grainCanvas.height = Math.ceil(window.innerHeight / GRAIN_DOWNSCALE);
         };
         grainResizeHandler();
         window.addEventListener('resize', grainResizeHandler);
@@ -45,7 +52,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function startGrainBg() {
-        if (!grainCanvas) initGrainBg();
+        if (!grainCanvas || !grainCanvas.width) initGrainBg();
         if (!grainCanvas || grainInterval) return;
         const FPS = 18;
         drawGrain();
@@ -54,6 +61,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function stopGrainBg() {
         if (grainInterval) { clearInterval(grainInterval); grainInterval = null; }
+        // Полная детерминация: остановка таймера не уменьшает backing store самого канваса —
+        // зануляем размер явно, initGrainBg() на следующем startGrainBg() пересоздаст.
+        if (grainCanvas) { grainCanvas.width = 0; grainCanvas.height = 0; }
     }
 
     // ─── ЗЕРНО НА ЛОГО (анимация SVG feTurbulence) ───────────────────────────
@@ -68,36 +78,225 @@ document.addEventListener('DOMContentLoaded', function () {
         const BASE = 0.72;
         const AMP  = 0.06;
 
+        // Тик замедлен вдвое (было 55мс) — feTurbulence растеризуется на CPU и это самый
+        // дорогой эффект из трёх, каждая смена seed/baseFrequency форсит перерасчёт заново.
+        // Шаг по t увеличен вдвое, чтобы скорость самой волны визуально не изменилась —
+        // глаз не различает разницу между 18 и 9 обновлениями/сек в медленно дышащем шуме.
         logoGrainInterval = setInterval(() => {
-            logoGrainT += 0.04;
+            logoGrainT += 0.08;
             const fx = BASE + Math.sin(logoGrainT * 1.3) * AMP;
             const fy = BASE + Math.cos(logoGrainT * 0.9) * AMP;
             turbulence.setAttribute('baseFrequency', `${fx.toFixed(4)} ${fy.toFixed(4)}`);
             turbulence.setAttribute('seed', (Math.random() * 1000 | 0).toString());
-        }, 55);
+        }, 110);
     }
 
     function stopLogoGrain() {
         if (logoGrainInterval) { clearInterval(logoGrainInterval); logoGrainInterval = null; }
     }
 
-    // ─── Фоновое видео ────────────────────────────────────────────────────────
-    function pauseBgVideo() { bgVideo.pause(); }
-    function resumeBgVideo() { bgVideo.play().catch(() => {}); }
+    // Полная детерминация: таймер остановлен, но feTurbulence всё равно растеризован и Chromium
+    // держит его как отдельный composited layer, пока фильтр применён к #logo-grain в CSS.
+    // Самый надёжный способ сбросить этот кэш — временно снять фильтр с логотипа, чтобы
+    // Chromium освободил GPU-текстуру, и вернуть фильтр обратно на window-restored.
+    const logoImgEl = document.querySelector('.logo-img');
+
+    function destroyLogoGrainFilter() {
+        if (logoImgEl) logoImgEl.style.filter = 'none';
+    }
+    function restoreLogoGrainFilter() {
+        if (logoImgEl) logoImgEl.style.filter = '';
+    }
+
+    // ─── ГОЛОГРАММА ИКОНКИ В НИШЕ ТАЙТЛБАРА ────────────────────────────────────
+    // Canvas-эффект (был SVG-фильтр с шумом — заменён): иконка тонируется в бледно-голубые тона
+    // по яркости каждого пикселя (тёмное → тёмно-синий, светлое → бледно-голубой, альфа не трогается
+    // — прозрачное остаётся прозрачным), затем режется на горизонтальные полоски, и каждая
+    // полоска рисуется со своим сдвигом по X — sin(t*SPEED + индекс_полоски*FREQ) — соседние полоски
+    // рассинхронизированы по фазе — получается медленная бегущая волна, полоски словно плывут
+    // влево-вправо в разнобой. Тонировка считается один раз при загрузке картинки (getImageData/
+    // putImageData), в rAF-цикле только блиттинг полосок — дёшево даже на каждом кадре.
+    const ICON_RES        = 64;
+    const ICON_STRIP_H    = 4;
+    const ICON_WAVE_AMP   = 3.5;
+    const ICON_WAVE_SPEED = 0.5;
+    const ICON_WAVE_FREQ  = 0.55;
+    const ICON_TINT_DARK  = [18, 30, 60];
+    const ICON_TINT_LIGHT = [175, 225, 255];
+    const ICON_STRIPE_DARKEN = 0.14; // насколько темнее каждая вторая полоска (0–1, чёрное — едва заметно)
+    const ICON_SRC        = '../../assets/icons/SCOROBEY.ico';
+
+    const iconCanvas = document.getElementById('titlebar-icon-canvas');
+    let iconCtx = null, iconTintedCanvas = null, iconTintedDarkCanvas = null, iconRafId = null, iconAnimStart = 0;
+
+    function buildTintedIcon(img) {
+        const off = document.createElement('canvas');
+        off.width = ICON_RES;
+        off.height = ICON_RES;
+        const octx = off.getContext('2d');
+        octx.drawImage(img, 0, 0, ICON_RES, ICON_RES);
+
+        const imgData = octx.getImageData(0, 0, ICON_RES, ICON_RES);
+        const d = imgData.data;
+        for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] === 0) continue;
+            const lum = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
+            d[i]     = ICON_TINT_DARK[0] + (ICON_TINT_LIGHT[0] - ICON_TINT_DARK[0]) * lum;
+            d[i + 1] = ICON_TINT_DARK[1] + (ICON_TINT_LIGHT[1] - ICON_TINT_DARK[1]) * lum;
+            d[i + 2] = ICON_TINT_DARK[2] + (ICON_TINT_LIGHT[2] - ICON_TINT_DARK[2]) * lum;
+        }
+        octx.putImageData(imgData, 0, 0);
+        return off;
+    }
+
+    // Затемнённая копия уже тонированного канваса — source-atop кладёт чёрный оверлей ТОЛЬКО на уже
+    // непрозрачные пиксели иконки, альфа снаружи не трогается — точно так же, как в кнопках тайтлбара (drawPressed).
+    function buildDarkenedCopy(sourceCanvas, amount) {
+        const off = document.createElement('canvas');
+        off.width = sourceCanvas.width;
+        off.height = sourceCanvas.height;
+        const octx = off.getContext('2d');
+        octx.drawImage(sourceCanvas, 0, 0);
+        octx.globalCompositeOperation = 'source-atop';
+        octx.fillStyle = `rgba(0, 0, 0, ${amount})`;
+        octx.fillRect(0, 0, off.width, off.height);
+        octx.globalCompositeOperation = 'source-over';
+        return off;
+    }
+
+    function drawIconHologramFrame(tsMs) {
+        if (!iconCtx || !iconTintedCanvas) return;
+        const t = (tsMs - iconAnimStart) / 1000;
+        iconCtx.clearRect(0, 0, ICON_RES, ICON_RES);
+        for (let y = 0, stripIndex = 0; y < ICON_RES; y += ICON_STRIP_H, stripIndex++) {
+            const dx = Math.sin(t * ICON_WAVE_SPEED + stripIndex * ICON_WAVE_FREQ) * ICON_WAVE_AMP;
+            const src = (stripIndex % 2 === 1) ? iconTintedDarkCanvas : iconTintedCanvas;
+            iconCtx.drawImage(src, 0, y, ICON_RES, ICON_STRIP_H, dx, y, ICON_RES, ICON_STRIP_H);
+        }
+        iconRafId = requestAnimationFrame(drawIconHologramFrame);
+    }
+
+    function startIconHologram() {
+        if (!iconCanvas || iconRafId) return;
+        if (!iconCtx) iconCtx = iconCanvas.getContext('2d');
+
+        function begin() {
+            iconAnimStart = performance.now();
+            iconRafId = requestAnimationFrame(drawIconHologramFrame);
+        }
+
+        if (iconTintedCanvas) {
+            begin();
+        } else {
+            const img = new Image();
+            img.onload = () => {
+                iconTintedCanvas = buildTintedIcon(img);
+                iconTintedDarkCanvas = buildDarkenedCopy(iconTintedCanvas, ICON_STRIPE_DARKEN);
+                begin();
+            };
+            img.src = ICON_SRC;
+        }
+    }
+
+    function stopIconHologram() {
+        if (iconRafId) { cancelAnimationFrame(iconRafId); iconRafId = null; }
+    }
+
+    // pause() останавливает воспроизведение, но НЕ освобождает decode buffer видеодекодера —
+    // Chromium держит его выделенным всё время, пока у <video> есть src. removeAttribute('src') + load()
+    // реально сбрасывает декодированные буферы — главный источник RAM, не освобождавшийся прежним
+    // stopHeavyEffects() за многочасовую игровую сессию. Как только лаунчер скрыт — сами видео
+    // никому не видны, поэтому выгода терять воспроизведение в момент скрытия нет.
+    const BG_VIDEO_SRC        = bgVideo.getAttribute('src');
+    const SANDSTORM_VIDEO_SRC = sandstormVideo.getAttribute('src');
+
+    function destroyBgVideo() {
+        bgVideo.pause();
+        bgVideo.removeAttribute('src');
+        bgVideo.load();
+    }
+    function restoreBgVideo() {
+        bgVideo.src = BG_VIDEO_SRC;
+        bgVideo.load();
+        bgVideo.play().catch(() => {});
+    }
+
+    function destroySandstormVideo() {
+        sandstormVideo.pause();
+        sandstormVideo.removeAttribute('src');
+        sandstormVideo.load();
+    }
+    function restoreSandstormVideo() {
+        sandstormVideo.src = SANDSTORM_VIDEO_SRC;
+        sandstormVideo.load();
+    }
+
+    // 64x64 оффскрин-канвасы голограммы иконки сами по себе дешёвы и не являются источником роста
+    // памяти, но для полной детерминации всех рендер-объектов при скрытии освобождаем и их —
+    // пересчёт при следующем startIconHologram() дешёв (один getImageData на 64x64).
+    function destroyIconHologramCache() {
+        iconTintedCanvas = null;
+        iconTintedDarkCanvas = null;
+    }
 
     function startHeavyEffects() {
+        restoreBgVideo();
+        restoreSandstormVideo();
+        restoreLogoGrainFilter();
         startGrainBg();
         startLogoGrain();
-        resumeBgVideo();
+        startIconHologram();
     }
 
     function stopHeavyEffects() {
         stopGrainBg();
         stopLogoGrain();
-        pauseBgVideo();
+        stopIconHologram();
+        destroyIconHologramCache();
+        destroyLogoGrainFilter();
+        destroyBgVideo();
+        destroySandstormVideo();
     }
 
     startHeavyEffects();
+
+    // ─── Кнопки тайтлбара (свернуть/закрыть) ───────────────────────────────────
+    // Каждая кнопка — отдельный <canvas>, состояние нажатия рисуется прямо на канвасе через
+    // globalCompositeOperation='source-atop' — затемняющий слой ложится ТОЛЬКО поверх уже нарисованных
+    // непрозрачных пикселей спрайта — прозрачный фон кнопки не темнеет. Без ховер-свечения, только реакция на клик.
+    const titlebarButtons = [
+        { canvas: document.getElementById('titlebar-collapse'), src: '../../assets/img/Scorcher/TASKBAR/COLLAPSE.png', action: () => { if (window.electronAPI) window.electronAPI.minimizeWindow(); } },
+        { canvas: document.getElementById('titlebar-close'),    src: '../../assets/img/Scorcher/TASKBAR/CLOSE.png',    action: () => { if (window.electronAPI) window.electronAPI.closeWindow(); } }
+    ];
+
+    titlebarButtons.forEach(({ canvas, src, action }) => {
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        let loaded = false;
+
+        function drawNormal() {
+            ctx.clearRect(0, 0, 24, 24);
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.drawImage(img, 0, 0, 24, 24);
+        }
+
+        function drawPressed() {
+            drawNormal();
+            ctx.globalCompositeOperation = 'source-atop';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+            ctx.fillRect(0, 0, 24, 24);
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        img.onload = () => { loaded = true; drawNormal(); };
+        img.src = src;
+
+        canvas.addEventListener('mousedown',  () => { if (loaded) drawPressed(); });
+        canvas.addEventListener('mouseup',    () => { if (loaded) drawNormal(); });
+        canvas.addEventListener('mouseleave', () => { if (loaded) drawNormal(); });
+        canvas.addEventListener('click', action);
+    });
 
     // ─── IPC-обработчики ───────────────────────────────────────────────────────
 
@@ -110,13 +309,11 @@ document.addEventListener('DOMContentLoaded', function () {
         window.electronAPI.onPrepareHide(() => {
             bgMusic.pause();
             bgMusic.currentTime = 0;
-            sandstormVideo.pause();
-            sandstormVideo.currentTime = 0;
             sandstormVideo.classList.remove('active');
             sandstormFinished = false;
             if (fadeAudioInterval) { clearInterval(fadeAudioInterval); fadeAudioInterval = null; }
             stopWeekendTimer();
-            stopHeavyEffects();
+            stopHeavyEffects(); // pause + destroySandstormVideo/destroyBgVideo уже внутри — ручный pause/currentTime выше больше не нужен
         });
 
         window.electronAPI.onStatusUpdate((status) => {
@@ -168,6 +365,10 @@ document.addEventListener('DOMContentLoaded', function () {
             if (fadeAudioInterval) { clearInterval(fadeAudioInterval); fadeAudioInterval = null; }
             startWeekendTimer();
             startHeavyEffects();
+
+            // Лаунчер снова показан — разрешаем новый клик
+            launchInProgress = false;
+            serverButtons.forEach(b => b.style.pointerEvents = '');
         });
     }
 
@@ -181,6 +382,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ─── Музыка ───────────────────────────────────────────────────────────────
     let musicStarted = false;
     let fadeAudioInterval = null;
+    let launchInProgress = false; // защита от повторных кликов по кнопке сервера
 
     function startMusic() {
         if (!musicStarted) {
@@ -224,7 +426,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             });
         }
-        updateBadge.textContent = `Доступно обновление: ${info.version} (клик для скачивания)`;
+        updateBadge.textContent = `Update available: ${info.version} (click to download)`;
         updateBadge.title = info.notes || '';
         updateBadge.dataset.url = info.url || '';
         updateBadge.style.display = info.url ? 'block' : 'none';
@@ -257,6 +459,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     serverButtons.forEach(button => {
         button.addEventListener('click', function () {
+            if (launchInProgress) return; // игнорируем повторные клики, пока идёт sandstorm/запуск
+            launchInProgress = true;
+            serverButtons.forEach(b => b.style.pointerEvents = 'none');
+
             const serverUrl = this.getAttribute('data-server');
             startMusic();
 

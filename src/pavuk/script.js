@@ -86,7 +86,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
-        updateBadge.textContent = `Доступно обновление: ${info.version} (клик для скачивания)`;
+        updateBadge.textContent = `Update available: ${info.version} (click to download)`;
         updateBadge.title = info.notes || '';
         updateBadge.dataset.url = info.url || '';
         updateBadge.style.display = info.url ? 'block' : 'none';
@@ -245,6 +245,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let musicStarted = false;
     let flashTimeoutId = null;
     let fadeAudioInterval = null;
+    let launchInProgress = false; // защита от повторных кликов по кнопке сервера
     function startMusic() {
         if (!musicStarted) {
             backgroundMusic.play().catch(e => console.log('Music autoplay blocked'));
@@ -271,6 +272,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     serverButtons.forEach(button => {
         button.addEventListener('click', function() {
+            if (launchInProgress) return; // игнорируем повторные клики, пока идёт запуск
+            launchInProgress = true;
+            serverButtons.forEach(b => b.style.pointerEvents = 'none');
+
             const serverUrl = this.getAttribute('data-server');
             startMusic();
             clickSound.currentTime = 0;
@@ -327,6 +332,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (fadeAudioInterval) { clearInterval(fadeAudioInterval); fadeAudioInterval = null; }
             scheduleNextFlash();
             startWeekendTimer(); // возобновляем таймер при показе лаунчера
+
+            // Лаунчер снова показан (успех или таймаут запуска) — разрешаем новый клик
+            launchInProgress = false;
+            serverButtons.forEach(b => b.style.pointerEvents = '');
         });
     }
 });

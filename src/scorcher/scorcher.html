@@ -34,9 +34,20 @@
                 <!-- Теперь накладываем уже замаскированный шум на оригинал -->
                 <feBlend in="SourceGraphic" in2="maskedNoise" mode="soft-light"/>
             </filter>
+
         </defs>
     </svg>
 
+    <!-- Кастомный тайтлбар (frame: false в scorcher_main.js) — ширина жёстко 900px, окно не ресайзится -->
+    <div id="custom-titlebar">
+        <div id="titlebar-icon-slot">
+            <canvas id="titlebar-icon-canvas" width="64" height="64"></canvas>
+        </div>
+        <canvas id="titlebar-collapse" class="titlebar-btn" width="24" height="24"></canvas>
+        <canvas id="titlebar-close" class="titlebar-btn" width="24" height="24"></canvas>
+    </div>
+
+    <div id="game-area">
     <div class="background-container">
         <video id="bg-video" src="../../assets/img/Scorcher/SCORCHING_MAIN.mp4" autoplay loop muted playsinline></video>
         <video id="sandstorm-video" src="../../assets/img/Scorcher/SANDSTORM.mp4" muted playsinline></video>
@@ -84,6 +95,7 @@
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
         </svg>
     </button>
+    </div><!-- /#game-area -->
 
     <audio id="background-music" src="../../assets/sounds/scorcher_music.mp3" loop></audio>
     <audio id="click-sound" src="../../assets/sounds/click.MP3"></audio>

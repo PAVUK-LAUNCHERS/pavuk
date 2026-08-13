@@ -182,6 +182,48 @@
             box-shadow: 0 0 10px rgba(255, 100, 0, 0.5);
             color: #fff;
         }
+
+        .hotkey-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .hotkey-input {
+            flex: 1;
+            background: rgba(20, 8, 0, 0.9);
+            border: 1px solid rgba(200, 80, 0, 0.5);
+            color: #fff;
+            padding: 9px 10px;
+            font-family: 'LinBiolinum', sans-serif;
+            text-align: center;
+            letter-spacing: 1px;
+            user-select: none;
+        }
+
+        .hotkey-input.listening {
+            border-color: #ff6a00;
+            color: #ffaa66;
+            box-shadow: 0 0 10px rgba(255, 100, 0, 0.5);
+        }
+
+        .hotkey-btn {
+            background: rgba(20, 8, 0, 0.9);
+            border: 1px solid rgba(200, 80, 0, 0.5);
+            color: #ffaa66;
+            padding: 9px 12px;
+            cursor: pointer;
+            font-family: 'LinBiolinum', sans-serif;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            transition: all 0.2s ease;
+        }
+
+        .hotkey-btn:hover {
+            border-color: #ff6a00;
+            color: #fff;
+        }
     </style>
 </head>
 <body>
@@ -234,6 +276,15 @@
             <label>CONNECT AT (TIME)</label>
             <input type="time" id="auto-time" value="12:00">
         </div>
+
+        <div class="setting-item">
+            <label>EXIT GAME HOTKEY</label>
+            <div class="hotkey-row">
+                <div class="hotkey-input" id="hotkey-input" tabindex="0">Alt+F4</div>
+                <button type="button" class="hotkey-btn" id="hotkey-record">SET</button>
+                <button type="button" class="hotkey-btn" id="hotkey-reset">RESET</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -247,10 +298,83 @@
             communityKz:      document.getElementById('community-kz'),
             regionServer:     document.getElementById('region-server'),
             regionServerContainer: document.getElementById('region-server-container'),
+            hotkeyInput: document.getElementById('hotkey-input'),
+            hotkeyRecord: document.getElementById('hotkey-record'),
+            hotkeyReset: document.getElementById('hotkey-reset'),
         };
 
         let currentCommunity   = 'ru';
         let currentRegionServer = 'alpha';
+        let currentHotkey = 'Alt+F4';
+        const DEFAULT_HOTKEY = 'Alt+F4';
+
+        // ─── Запись горячей клавиши ───
+        let listening = false;
+
+        function keyEventToAccelerator(e) {
+            const parts = [];
+            if (e.ctrlKey) parts.push('Control');
+            if (e.altKey) parts.push('Alt');
+            if (e.shiftKey) parts.push('Shift');
+            if (e.metaKey) parts.push('Super');
+
+            const code = e.code || '';
+            let key = null;
+            if (/^Key[A-Z]$/.test(code)) key = code.slice(3);
+            else if (/^Digit[0-9]$/.test(code)) key = code.slice(5);
+            else if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) key = code;
+            else {
+                const map = {
+                    Escape: 'Esc', Space: 'Space', Enter: 'Return', Tab: 'Tab',
+                    ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
+                    Backspace: 'Backspace', Delete: 'Delete', Home: 'Home', End: 'End',
+                    PageUp: 'PageUp', PageDown: 'PageDown', Insert: 'Insert',
+                    Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']',
+                    Backslash: '\\', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backquote: '`'
+                };
+                key = map[code] || null;
+            }
+            if (!key) return null;
+            parts.push(key);
+            return parts.join('+');
+        }
+
+        function setHotkey(accel, skipSave) {
+            currentHotkey = accel;
+            elements.hotkeyInput.textContent = accel || 'DISABLED';
+            if (!skipSave) save();
+        }
+
+        function stopListening() {
+            listening = false;
+            elements.hotkeyInput.classList.remove('listening');
+            document.removeEventListener('keydown', onHotkeyKeydown, true);
+        }
+
+        function onHotkeyKeydown(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            // Отмена записи убрана — любая клавиша, включая Escape (с модификаторами и без), теперь просто
+            // назначается как хоткей через общий путь keyEventToAccelerator. Чтобы отменить запись —
+            // повторный клик по SET.
+            const accel = keyEventToAccelerator(e);
+            if (!accel) return;
+            stopListening();
+            setHotkey(accel);
+        }
+
+        elements.hotkeyRecord.addEventListener('click', () => {
+            if (listening) { stopListening(); elements.hotkeyInput.textContent = currentHotkey || 'DISABLED'; return; }
+            listening = true;
+            elements.hotkeyInput.classList.add('listening');
+            elements.hotkeyInput.textContent = 'PRESS KEYS...';
+            document.addEventListener('keydown', onHotkeyKeydown, true);
+        });
+
+        elements.hotkeyReset.addEventListener('click', () => {
+            if (listening) stopListening();
+            setHotkey(DEFAULT_HOTKEY);
+        });
 
         const SERVER_HOSTS = [
             { host: 'eu1.lfwb.at', label: 'EUROPE I' },
@@ -314,6 +438,8 @@
             rebuildAutoServerOptions(currentCommunity, currentRegionServer, s.autoServer || '');
             elements.autoTime.value      = s.autoTime   || '12:00';
             toggleAutoTime();
+            currentHotkey = s.exitHotkey || DEFAULT_HOTKEY;
+            elements.hotkeyInput.textContent = currentHotkey || 'DISABLED';
         }
 
         function save() {
@@ -323,7 +449,8 @@
                 autoServer: elements.autoServer.value,
                 autoTime:   elements.autoTime.value,
                 community:  currentCommunity,
-                scorcherRegion: currentRegionServer
+                scorcherRegion: currentRegionServer,
+                exitHotkey: currentHotkey
             });
             window.electronAPI.setVolume(elements.volume.value / 100);
         }

@@ -7,19 +7,76 @@
 
 body {
     font-family: 'LinBiolinum', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    min-height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
     color: #fff;
     overflow: hidden;
     position: relative;
-    background: #0d0500;
+    background: transparent;
+    cursor: default;
+    user-select: none;
 }
+
+/* ─── КАСТОМНЫЙ ТАЙТЛБАР ────────────────────────────────────────────────────────────────────────── */
+/* frame:false в scorcher_main.js — системной рамки нет, рисуем свою. Окно фиксированное 900×700 и не ресайзится —
+   поэтому бар цельный спрайт на 900px без tiling, без background-size:cover. */
+#custom-titlebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 900px;
+    height: 50px; /* спрайт TASKBAR.png теперь 900x50 (был 900x40) */
+    background-image: url('../../assets/img/Scorcher/TASKBAR/TASKBAR.png');
+    background-repeat: no-repeat;
+    background-position: top left;
+    -webkit-app-region: drag;
+    z-index: 1000;
+}
+
+#game-area {
+    position: absolute;
+    top: 10px;
+    left: 0;
+    width: 900px;
+    height: 700px;
+    overflow: hidden;
+    background: #0d0500;
+    z-index: 1;
+}
+
+/* Ниша под иконку в спрайте TASKBAR.png — координаты подсчитаны по пикселям исходного PNG (x:9–41, y:9–41), пересчитано под новый спрайт 900x50 */
+#titlebar-icon-slot {
+    position: absolute;
+    left: 9px;
+    top: 9px;
+    width: 32px;
+    height: 32px;
+    overflow: hidden;
+    pointer-events: none; /* чисто декоративный элемент, клики проходят на драг бара под ним */
+}
+
+#titlebar-icon-slot canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* Координаты вырезов под кнопки в TASKBAR.png (спрайт 900x50): два прозрачных окна 22×22 на y:15–37,
+   слева x:838–860 (свернуть), справа x:862–884 (закрыть). Наши спрайты 24×24 —
+   центрируем канвас по центру каждого выреза (на 1px выходит за фаску с каждой стороны — так и задумано). */
+.titlebar-btn {
+    position: absolute;
+    top: 14px;
+    width: 24px;
+    height: 24px;
+    -webkit-app-region: no-drag;
+    cursor: pointer;
+}
+
+#titlebar-collapse { left: 837px; }
+#titlebar-close    { left: 861px; }
 
 /* ─── ФОНОВОЕ ВИДЕО ─────────────────────────────────────────────────────────── */
 .background-container {
-    position: fixed;
+    position: absolute;
     inset: 0;
     z-index: -1;
 }
@@ -48,7 +105,7 @@ body {
 
 /* ─── ЗЕРНО: ФОНОВЫЙ КАНВАС ─────────────────────────────────────────────────── */
 #grain-bg {
-    position: fixed;
+    position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
@@ -60,7 +117,7 @@ body {
 
 /* ─── ОВЕРЛЕИ ────────────────────────────────────────────────────────────────── */
 .vignette {
-    position: fixed;
+    position: absolute;
     inset: 0;
     background: radial-gradient(ellipse at center,
         transparent 25%,
@@ -72,7 +129,7 @@ body {
 }
 
 .heat-lines {
-    position: fixed;
+    position: absolute;
     inset: 0;
     background: repeating-linear-gradient(
         0deg,
@@ -96,7 +153,7 @@ body {
 .container {
     position: relative;
     width: 100%;
-    height: 100vh;
+    height: 100%;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -256,8 +313,8 @@ body {
 
 /* ─── КНОПКА НАСТРОЕК ────────────────────────────────────────────────────────── */
 .settings-button {
-    position: fixed;
-    top: 26px;
+    position: absolute;
+    top: 50px;
     right: 26px;
     width: 54px;
     height: 54px;

@@ -1,8 +1,9 @@
-const { app, BrowserWindow, shell, ipcMain, Tray, Menu } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, Tray, Menu, globalShortcut } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
 const fs = require('fs');
 const os = require('os');
+const { isDreamSeekerRunning, killDreamSeeker, stopMonitor } = require('./src/shared/dsProcessMonitor');
 
 // ─── Базовые пути (работает и из корня, и из dist/win-unpacked) ───────────────
 const ROOT      = __dirname;
@@ -22,7 +23,8 @@ const state = {
     dsPhase: 'IDLE',
     launchDeadline: 0,
     childSeen: false,
-    community: 'ru'
+    community: 'ru',
+    exitHotkey: 'Alt+F4'
 };
 
 const MONITOR_INTERVAL_MS = 2000;
@@ -103,6 +105,7 @@ function loadSettingsFromDisk() {
             if (typeof data.autoServer === 'string') state.autoServer = data.autoServer;
             if (typeof data.autoTime   === 'string') state.autoTime   = data.autoTime;
             if (typeof data.community  === 'string') state.community  = data.community;
+            if (typeof data.exitHotkey === 'string') state.exitHotkey = data.exitHotkey;
         }
     } catch (e) { console.error('Failed to load settings:', e.message); }
 }
@@ -113,9 +116,25 @@ function saveSettingsToDisk() {
             volume:     state.volume,
             autoServer: state.autoServer,
             autoTime:   state.autoTime,
-            community:  state.community
+            community:  state.community,
+            exitHotkey: state.exitHotkey
         }, null, 2), 'utf-8');
     } catch (e) { console.error('Failed to save settings:', e.message); }
+}
+
+// ─── Горячая клавиша выхода из игры (глобальная, работает даже без фокуса на окне) ───
+function registerExitHotkey() {
+    try { globalShortcut.unregisterAll(); } catch (e) {}
+    if (!state.exitHotkey) return;
+    try {
+        const ok = globalShortcut.register(state.exitHotkey, () => {
+            // Просто убиваем dreamseeker.exe — дальше processMonitorTask сам вернёт лаунчер на экран (PLAYING → IDLE → showLauncher)
+            killDreamSeeker();
+        });
+        if (!ok) console.error('[hotkey] Не удалось зарегистрировать горячую клавишу:', state.exitHotkey, '(возможно занята другим приложением/вторым лаунчером)');
+    } catch (e) {
+        console.error('[hotkey] Некорректный accelerator:', state.exitHotkey, e.message);
+    }
 }
 
 // ─── Создание ярлыка PAVUK на рабочем столе (один раз при первом запуске) ─────
@@ -225,33 +244,8 @@ function createSettingsWindow() {
     settingsWindow.on('closed', () => { settingsWindow = null; });
 }
 
-// ─── Проверка наличия живого DreamSeeker ───────────────────────────────────────
-function isDreamSeekerRunning() {
-    return new Promise((resolve) => {
-        const cmd = 'powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object {$_.Name -eq \'dreamseeker.exe\'} | Select-Object ProcessId,ParentProcessId | ConvertTo-Json -Compress"';
-        exec(cmd, (err, stdout) => {
-            if (err || !stdout || !stdout.trim()) { resolve({ running: false, hasChild: false }); return; }
-            try {
-                let parsed = JSON.parse(stdout);
-                if (!Array.isArray(parsed)) parsed = [parsed];
-                const pids = new Set(parsed.map(p => p.ProcessId));
-                const hasChild = parsed.some(p => pids.has(p.ParentProcessId));
-                resolve({ running: parsed.length > 0, hasChild });
-            } catch (e) {
-                resolve({ running: false, hasChild: false });
-            }
-        });
-    });
-}
-
-// ─── Убить все процессы DreamSeeker (ждём завершения) ──────────────────────────
-function killDreamSeeker() {
-    return new Promise((resolve) => {
-        exec('taskkill /F /IM dreamseeker.exe /T', () => {
-            resolve();
-        });
-    });
-}
+// isDreamSeekerRunning()/killDreamSeeker() теперь живут в src/shared/dsProcessMonitor.js —
+// общий постоянный PowerShell-хост вместо wmic (см. комментарии в этом файле).
 
 // ─── Скрыть / показать лаунчер ────────────────────────────────────────────────
 function hideLauncher() {
@@ -340,8 +334,10 @@ async function timeBasedAutoConnectTask() {
 
 // ─── IPC ──────────────────────────────────────────────────────────────────────
 ipcMain.on('save-settings', (event, settings) => {
+    const prevHotkey = state.exitHotkey;
     Object.assign(state, settings);
     saveSettingsToDisk();
+    if (state.exitHotkey !== prevHotkey) registerExitHotkey();
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('auto-info-update', { server: state.autoServer, time: state.autoTime });
         mainWindow.webContents.send('servers-config-update', { community: state.community });
@@ -352,7 +348,8 @@ ipcMain.handle('get-settings', () => ({
     volume:     state.volume,
     autoServer: state.autoServer,
     autoTime:   state.autoTime,
-    community:  state.community
+    community:  state.community,
+    exitHotkey: state.exitHotkey
 }));
 
 ipcMain.on('open-settings',  createSettingsWindow);
@@ -370,6 +367,7 @@ app.whenReady().then(() => {
     createWindow();
     createTray();
     createDesktopShortcut();
+    registerExitHotkey();
     setInterval(processMonitorTask,       MONITOR_INTERVAL_MS);
     setInterval(timeBasedAutoConnectTask, 10000);
     setInterval(checkForUpdates,          UPDATE_CHECK_INTERVAL_MS);
@@ -382,4 +380,5 @@ app.whenReady().then(() => {
     });
 });
 
+app.on('will-quit', () => { globalShortcut.unregisterAll(); stopMonitor(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
