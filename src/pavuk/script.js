@@ -251,9 +251,9 @@ document.addEventListener('DOMContentLoaded', function() {
             updateBadge.id = 'update-badge';
             Object.assign(updateBadge.style, {
                 position: 'fixed',
-                top: '10px',
+                top: '50px', // ниже верхних UI-элементов (кнопка настроек и т.д.), чтобы не перекрывать их
                 right: '10px',
-                zIndex: '9999',
+                zIndex: '999',
                 background: 'rgba(20, 0, 0, 0.9)',
                 border: '1px solid #ff6666',
                 color: '#ffaaaa',

@@ -421,9 +421,9 @@ document.addEventListener('DOMContentLoaded', function () {
             updateBadge.id = 'update-badge';
             Object.assign(updateBadge.style, {
                 position: 'fixed',
-                bottom: '10px',
+                top: '60px', // ниже custom-titlebar (TASKBAR.png занимает 0–50px + отступ)
                 left: '10px',
-                zIndex: '9999',
+                zIndex: '999', // ниже #custom-titlebar (z-index:1000), чтобы не перекрывать спрайт таскбара
                 background: 'rgba(20, 8, 0, 0.9)',
                 border: '1px solid #ff6a00',
                 color: '#ffaa66',
