@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain, Tray, Menu, globalShortcut } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, Tray, Menu, globalShortcut, nativeImage } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
 const fs = require('fs');
@@ -30,7 +30,15 @@ const state = {
 const MONITOR_INTERVAL_MS = 2000;
 const LAUNCH_GRACE_MS     = 30000;
 
-const BACKEND_URL  = 'https://tabula-qnxl.onrender.com';
+// ─── Кастомный тайтлбар (frame:false) — размер игровой области и нахлёст тайтлбара ────
+// Аналогично Scorcher: окно на OVERHANG_PX выше игрового прямоугольника, чтобы верхняя
+// часть спрайта TASKBAR.png (гем-ниша слева + скруглённый правый торец), торчащая выше
+// сплошного бара, помещалась в окно, а не обрезалась его прямоугольной границей.
+const GAME_WIDTH  = 900;
+const GAME_HEIGHT = 700;
+const OVERHANG_PX = 10; // строки 0–9 спрайта (900x50) не сплошные на всю ширину, с 10-й — сплошные (проверено по альфе)
+
+const BACKEND_URL  = 'https://roleplay-n-hookah.vercel.app';
 const GITHUB_REPO  = 'PAVUK-LAUNCHERS/pavuk';
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
@@ -184,15 +192,88 @@ function createTray() {
     tray.on('double-click', () => showLauncher());
 }
 
+// ─── Хитбокс окна: обрезка под силуэт тайтлбара в зоне нахлёста (аналогично Scorcher) ──
+function computeTitlebarOverhangRects() {
+    const taskbarPath = path.join(ASSETS, 'img', 'TASKBAR', 'TASKBAR.png');
+    let img;
+    try {
+        img = nativeImage.createFromPath(taskbarPath);
+    } catch (e) {
+        console.error('[shape] Не удалось прочитать TASKBAR.png:', e.message);
+        return [];
+    }
+    const { width, height } = img.getSize();
+    if (!width || !height) return [];
+
+    const bitmap = img.toBitmap();
+    const rows = Math.min(OVERHANG_PX, height);
+
+    function getRuns(y) {
+        const runs = [];
+        let start = null;
+        for (let x = 0; x < width; x++) {
+            const a = bitmap[(y * width + x) * 4 + 3];
+            const opaque = a > 0;
+            if (opaque && start === null) start = x;
+            if (!opaque && start !== null) { runs.push([start, x]); start = null; }
+        }
+        if (start !== null) runs.push([start, width]);
+        return runs;
+    }
+
+    function runsEqual(a, b) {
+        if (!a || !b || a.length !== b.length) return false;
+        return a.every((r, i) => r[0] === b[i][0] && r[1] === b[i][1]);
+    }
+
+    const rects = [];
+    let prevRuns = null;
+    let rectStartY = 0;
+
+    for (let y = 0; y < rows; y++) {
+        const runs = getRuns(y);
+        if (!runsEqual(runs, prevRuns)) {
+            if (prevRuns) {
+                for (const [x0, x1] of prevRuns) {
+                    rects.push({ x: x0, y: rectStartY, width: x1 - x0, height: y - rectStartY });
+                }
+            }
+            prevRuns = runs;
+            rectStartY = y;
+        }
+    }
+    if (prevRuns) {
+        for (const [x0, x1] of prevRuns) {
+            rects.push({ x: x0, y: rectStartY, width: x1 - x0, height: rows - rectStartY });
+        }
+    }
+
+    return rects;
+}
+
+function updateWindowShape() {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (process.platform === 'darwin') return;
+
+    const rects = computeTitlebarOverhangRects();
+    rects.push({ x: 0, y: OVERHANG_PX, width: GAME_WIDTH, height: GAME_HEIGHT });
+
+    try {
+        mainWindow.setShape(rects);
+    } catch (e) {
+        console.error('[shape] setShape не сработал:', e.message);
+    }
+}
+
 // ─── Главное окно ─────────────────────────────────────────────────────────────
 function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 900,
-        height: 700,
+        width: GAME_WIDTH,
+        height: GAME_HEIGHT + OVERHANG_PX,
         resizable: false,
         autoHideMenuBar: true,
         backgroundColor: '#0a0a0a',
-        frame: true,
+        frame: false,
         useContentSize: true,
         webPreferences: {
             nodeIntegration: false,
@@ -203,6 +284,7 @@ function createWindow() {
     });
 
     mainWindow.loadFile(path.join(SRC_PAVUK, 'index.html'));
+    updateWindowShape();
 
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
         if (url.startsWith('byond://')) { handleManualLaunch(url); return { action: 'deny' }; }
@@ -311,9 +393,9 @@ async function processMonitorTask() {
             } else if (hasChild) {
                 state.childSeen = true;
             } else if (state.childSeen) {
-                await killDreamSeeker();
                 state.dsPhase = 'IDLE';
                 showLauncher();
+                killDreamSeeker(); // без await — чистим зомби в фоне, не блокируя показ UI
             }
             break;
     }
@@ -358,6 +440,8 @@ ipcMain.on('open-external-url', (event, url) => {
 });
 ipcMain.on('set-volume',     (e, v) => { state.volume = v; if (mainWindow) mainWindow.webContents.send('update-volume', v); });
 ipcMain.on('hide-window',    hideLauncher);
+ipcMain.on('minimize-window', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize(); });
+ipcMain.on('close-window',    () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close(); });
 ipcMain.on('launch-server',  (event, url) => { handleManualLaunch(url); });
 ipcMain.handle('get-auto-info', () => state.autoServer ? { server: state.autoServer, time: state.autoTime } : null);
 

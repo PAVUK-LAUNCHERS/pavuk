@@ -5,6 +5,11 @@ const fs = require('fs');
 const os = require('os');
 const { isDreamSeekerRunning, killDreamSeeker, stopMonitor } = require('../shared/dsProcessMonitor');
 
+// chrome://gpu показал GPU0=AMD (встроенная, *ACTIVE*), GPU1=NVIDIA (дискретная, не активна) —
+// Chromium по умолчанию выбрал более слабую встроенную графику на гибридной системе. Effect должен
+// быть вызван до создания app/window, иначе не подхватится.
+app.commandLine.appendSwitch('force_high_performance_gpu');
+
 // ─── Базовые пути ─────────────────────────────────────────────────────────────
 const ROOT         = path.resolve(__dirname, '..', '..');
 const ASSETS       = path.join(ROOT, 'assets');
@@ -51,7 +56,7 @@ const OVERHANG_PX  = 10; // сколько пикселей ВЕРХА TASKBAR.p
                           // поверх него по z-index. Спец-обработка через computeTitlebarOverhangRects() нужна
                           // только там, где спрайт торчит ЗА ПРЕДЕЛЫ окна (сверху, y<0 в системе координат окна).
 
-const BACKEND_URL  = 'https://tabula-qnxl.onrender.com';
+const BACKEND_URL  = 'https://roleplay-n-hookah.vercel.app';
 const GITHUB_REPO  = 'PAVUK-LAUNCHERS/pavuk';
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
@@ -293,8 +298,14 @@ function createWindow() {
         height: GAME_HEIGHT + OVERHANG_PX, // окно выше игрового контента на полосу нахлёста тайтлбара
         resizable: false,
         autoHideMenuBar: true,
-        transparent: true,        // настоящая прозрачность окна на уровне ОС — только так тайтлбар может реально выступать за край окна
-        backgroundColor: '#00000000',
+        // transparent:true убран сознательно: он не нужен для нахлёста тайтлбара — этим занимается
+        // setShape()/SetWindowRgn ниже (updateWindowShape), который работает на уровне ОС независимо
+        // от transparent. А сам transparent на Windows переключает DirectComposition в режим
+        // DXGI_ALPHA_MODE_PREMULTIPLIED вместо DXGI_ALPHA_MODE_IGNORE — это уводит Chromium с быстрого
+        // GPU-пути композиции (лишние редраунды на каждый кадр видео, см. electron/electron#39895).
+        // Цена — граница выреза становится аппаратно-жёсткой (aliased) вместо мягкого альфа-перехода,
+        // визуально малозаметно на таком маленьком элементе (скруглённый угол ~30px).
+        backgroundColor: '#0d0500',
         frame: false,
         useContentSize: true,
         webPreferences: {
@@ -417,9 +428,9 @@ async function processMonitorTask() {
             } else if (hasChild) {
                 state.childSeen = true;
             } else if (state.childSeen) {
-                await killDreamSeeker();
                 state.dsPhase = 'IDLE';
                 showLauncher();
+                killDreamSeeker(); // без await — чистим зомби в фоне, не блокируя показ UI
             }
             break;
     }

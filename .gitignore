@@ -5,4 +5,5 @@ dist-scorcher/
 .claude/
 _backup/
 CLAUDE.md
+AGENTS.md
 build_release.bat

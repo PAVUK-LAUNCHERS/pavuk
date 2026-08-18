@@ -10,6 +10,191 @@ document.addEventListener('DOMContentLoaded', function() {
 
     backgroundMusic.volume = 0.5;
 
+    // ─── ГОЛОГРАММА ИКОНКИ В НИШЕ ТАЙТЛБАРА ────────────────────────────────────
+    // Тот же принцип, что и у Scorcher (тонировка по яркости + разбивка на горизонтальные
+    // полоски), но вместо плавной бегущей волны — "лагающая" голограмма: большую часть времени
+    // иконка стоит на месте, и раз в 1–3 секунды ОДНА случайная полоска резко дёргается вбок
+    // и почти сразу возвращается (имитация сбоя сигнала), а не постоянное синхронное покачивание.
+    // Палитра — жёлто-оранжевая (в цвет TASKBAR.png/лого лаунчера), не голубая, как у Scorcher.
+    const ICON_RES        = 64;
+    const ICON_STRIP_H    = 4;
+    const ICON_DRAW_SIZE  = 60;            // размер иконки внутри 64px канваса (по краям — поля)
+    const ICON_TINT_DARK  = [60, 28, 0];    // тёмно-оранжевый (тень)
+    const ICON_TINT_LIGHT = [255, 205, 90]; // светлый жёлто-оранжевый (свет)
+    const ICON_STRIPE_DARKEN = 0.14;        // насколько темнее каждая вторая полоска
+    const ICON_SRC        = '../../assets/icons/PAVUK.ico';
+
+    // Микро-волна: очень малая амплитуда, почти незаметное покачивание
+    const ICON_WAVE_AMP   = 0.8;   // px — в разы меньше чем у Scorcher (3.5px)
+    const ICON_WAVE_SPEED = 3;  // рад/с (медленно)
+    const ICON_WAVE_FREQ  = 0.3;   // рад/полоску (мелкая рябь)
+
+    // Пульсация opacity
+    const ICON_PULSE_SPEED = 1.3;  // рад/с → период ≈ 4.8с
+    const ICON_PULSE_MIN   = 0.6;  // мин. opacity
+    const ICON_PULSE_MAX   = 1.0;  // макс. opacity
+
+    // Параметры лаг-сдвига: раз в 1–3 сек одна случайная полоска резко дёргается вбок
+    // и возвращается обратно за GLITCH_DURATION мс (имитация сбоя сигнала).
+    const GLITCH_MIN_DELAY_MS = 500;
+    const GLITCH_MAX_DELAY_MS = 1500;
+    const GLITCH_DURATION_MS  = 90;
+    const GLITCH_AMP_MIN      = 4;
+    const GLITCH_AMP_MAX      = 10;
+
+    const iconCanvas = document.getElementById('titlebar-icon-canvas');
+    let iconCtx = null, iconTintedCanvas = null, iconTintedDarkCanvas = null, iconRafId = null;
+    let iconStripCount = 0;
+    let glitchStripIndex = -1, glitchOffsetX = 0, glitchTimeoutId = null, glitchRevertTimeoutId = null;
+
+    function buildTintedIcon(img) {
+        const off = document.createElement('canvas');
+        off.width = ICON_RES;
+        off.height = ICON_RES;
+        const octx = off.getContext('2d');
+        // Рисуем иконку меньшего размера по центру канваса (оставляем поля по краям)
+        const offset = (ICON_RES - ICON_DRAW_SIZE) / 2;
+        octx.drawImage(img, offset, offset, ICON_DRAW_SIZE, ICON_DRAW_SIZE);
+
+        const imgData = octx.getImageData(0, 0, ICON_RES, ICON_RES);
+        const d = imgData.data;
+        for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] === 0) continue;
+            const lum = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
+            d[i]     = ICON_TINT_DARK[0] + (ICON_TINT_LIGHT[0] - ICON_TINT_DARK[0]) * lum;
+            d[i + 1] = ICON_TINT_DARK[1] + (ICON_TINT_LIGHT[1] - ICON_TINT_DARK[1]) * lum;
+            d[i + 2] = ICON_TINT_DARK[2] + (ICON_TINT_LIGHT[2] - ICON_TINT_DARK[2]) * lum;
+        }
+        octx.putImageData(imgData, 0, 0);
+        return off;
+    }
+
+    // Затемнённая копия уже тонированного канваса — source-atop кладёт чёрный оверлей ТОЛЬКО
+    // на уже непрозрачные пиксели иконки (та же техника, что и в drawPressed() у кнопок тайтлбара).
+    function buildDarkenedCopy(sourceCanvas, amount) {
+        const off = document.createElement('canvas');
+        off.width = sourceCanvas.width;
+        off.height = sourceCanvas.height;
+        const octx = off.getContext('2d');
+        octx.drawImage(sourceCanvas, 0, 0);
+        octx.globalCompositeOperation = 'source-atop';
+        octx.fillStyle = `rgba(0, 0, 0, ${amount})`;
+        octx.fillRect(0, 0, off.width, off.height);
+        octx.globalCompositeOperation = 'source-over';
+        return off;
+    }
+
+    function drawIconHologramFrame(tsMs) {
+        if (!iconCtx || !iconTintedCanvas) return;
+        const t = tsMs / 1000;
+        // Пульсация opacity: медленно меняется от ICON_PULSE_MIN до ICON_PULSE_MAX
+        const pulse = ICON_PULSE_MIN + (ICON_PULSE_MAX - ICON_PULSE_MIN) * (0.5 + 0.5 * Math.sin(t * ICON_PULSE_SPEED));
+        iconCtx.clearRect(0, 0, ICON_RES, ICON_RES);
+        iconCtx.globalAlpha = pulse;
+        for (let y = 0, stripIndex = 0; y < ICON_RES; y += ICON_STRIP_H, stripIndex++) {
+            // Микро-волна на всех полосках + глич поверх неё для одной случайной полоски
+            const waveDx = Math.sin(t * ICON_WAVE_SPEED + stripIndex * ICON_WAVE_FREQ) * ICON_WAVE_AMP;
+            const dx = (stripIndex === glitchStripIndex) ? glitchOffsetX : waveDx;
+            const src = (stripIndex % 2 === 1) ? iconTintedDarkCanvas : iconTintedCanvas;
+            iconCtx.drawImage(src, 0, y, ICON_RES, ICON_STRIP_H, dx, y, ICON_RES, ICON_STRIP_H);
+        }
+        iconCtx.globalAlpha = 1;
+        iconRafId = requestAnimationFrame(drawIconHologramFrame);
+    }
+
+    // Раз в 1–3 сек выбирает случайную полоску и резко сдвигает её вбок, затем возвращает
+    // на место — имитация "лага" голограммы, а не плавная бегущая волна.
+    function scheduleGlitch() {
+        const delay = GLITCH_MIN_DELAY_MS + Math.random() * (GLITCH_MAX_DELAY_MS - GLITCH_MIN_DELAY_MS);
+        glitchTimeoutId = setTimeout(() => {
+            if (iconStripCount > 0) {
+                glitchStripIndex = Math.floor(Math.random() * iconStripCount);
+                const amp = GLITCH_AMP_MIN + Math.random() * (GLITCH_AMP_MAX - GLITCH_AMP_MIN);
+                glitchOffsetX = Math.random() < 0.5 ? -amp : amp;
+                glitchRevertTimeoutId = setTimeout(() => {
+                    glitchStripIndex = -1;
+                    glitchOffsetX = 0;
+                }, GLITCH_DURATION_MS);
+            }
+            scheduleGlitch();
+        }, delay);
+    }
+
+    function stopGlitch() {
+        if (glitchTimeoutId) { clearTimeout(glitchTimeoutId); glitchTimeoutId = null; }
+        if (glitchRevertTimeoutId) { clearTimeout(glitchRevertTimeoutId); glitchRevertTimeoutId = null; }
+        glitchStripIndex = -1;
+        glitchOffsetX = 0;
+    }
+
+    function startIconHologram() {
+        if (!iconCanvas || iconRafId) return;
+        if (!iconCtx) iconCtx = iconCanvas.getContext('2d');
+        iconStripCount = Math.ceil(ICON_RES / ICON_STRIP_H);
+
+        function begin() {
+            iconRafId = requestAnimationFrame(drawIconHologramFrame);
+            scheduleGlitch();
+        }
+
+        if (iconTintedCanvas) {
+            begin();
+        } else {
+            const img = new Image();
+            img.onload = () => {
+                iconTintedCanvas = buildTintedIcon(img);
+                iconTintedDarkCanvas = buildDarkenedCopy(iconTintedCanvas, ICON_STRIPE_DARKEN);
+                begin();
+            };
+            img.src = ICON_SRC;
+        }
+    }
+
+    function stopIconHologram() {
+        if (iconRafId) { cancelAnimationFrame(iconRafId); iconRafId = null; }
+        stopGlitch();
+    }
+
+    startIconHologram();
+
+    // ─── Кнопки тайтлбара (свернуть/закрыть) ───────────────────────────────────
+    // Каждая кнопка — отдельный <canvas>, состояние нажатия рисуется прямо на канвасе через
+    // globalCompositeOperation='source-atop' — затемняющий слой ложится ТОЛЬКО поверх уже
+    // нарисованных непрозрачных пикселей спрайта, прозрачный фон кнопки не темнеет.
+    const titlebarButtons = [
+        { canvas: document.getElementById('titlebar-collapse'), src: '../../assets/img/TASKBAR/COLLAPSE.png', action: () => { if (window.electronAPI) window.electronAPI.minimizeWindow(); } },
+        { canvas: document.getElementById('titlebar-close'),    src: '../../assets/img/TASKBAR/CLOSE.png',    action: () => { if (window.electronAPI) window.electronAPI.closeWindow(); } }
+    ];
+
+    titlebarButtons.forEach(({ canvas, src, action }) => {
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        let loaded = false;
+
+        function drawNormal() {
+            ctx.clearRect(0, 0, 24, 24);
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.drawImage(img, 0, 0, 24, 24);
+        }
+
+        function drawPressed() {
+            drawNormal();
+            ctx.globalCompositeOperation = 'source-atop';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+            ctx.fillRect(0, 0, 24, 24);
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        img.onload = () => { loaded = true; drawNormal(); };
+        img.src = src;
+
+        canvas.addEventListener('mousedown',  () => { if (loaded) drawPressed(); });
+        canvas.addEventListener('mouseup',    () => { if (loaded) drawNormal(); });
+        canvas.addEventListener('mouseleave', () => { if (loaded) drawNormal(); });
+        canvas.addEventListener('click', action);
+    });
+
     if (window.electronAPI) {
         window.electronAPI.onVolumeUpdate((volume) => {
             backgroundMusic.volume = volume;
@@ -26,6 +211,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (flashTimeoutId) { clearTimeout(flashTimeoutId); flashTimeoutId = null; }
             if (fadeAudioInterval) { clearInterval(fadeAudioInterval); fadeAudioInterval = null; }
             stopWeekendTimer(); // экономия CPU/памяти: таймер бесполезен, пока окно скрыто
+            stopIconHologram(); // останавливаем rAF-цикл голограммы иконки, пока лаунчер скрыт
         });
 
         // Статус-индикатор (CONNECTING... / AUTO-CONNECTING...)
@@ -332,6 +518,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (fadeAudioInterval) { clearInterval(fadeAudioInterval); fadeAudioInterval = null; }
             scheduleNextFlash();
             startWeekendTimer(); // возобновляем таймер при показе лаунчера
+            startIconHologram(); // возобновляем голограмму иконки (тонированные канвасы уже закэшированы, пересчёта не будет)
 
             // Лаунчер снова показан (успех или таймаут запуска) — разрешаем новый клик
             launchInProgress = false;

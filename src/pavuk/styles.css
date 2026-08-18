@@ -11,21 +11,73 @@
 
 body {
     font-family: 'LinBiolinum', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    min-height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
     color: #fff;
     overflow: hidden;
     position: relative;
+    background: #0a0a0a;
+    cursor: default;
+    user-select: none;
 }
 
-.background-container {
+/* ─── КАСТОМНЫЙ ТАЙТЛБАР ────────────────────────────────────────────── */
+/* frame:false в main.js — системной рамки нет, рисуем свою. Окно фиксированное 900×700 и не ресайзится. */
+#custom-titlebar {
     position: fixed;
     top: 0;
     left: 0;
+    width: 900px;
+    height: 50px;
+    background-image: url('../../assets/img/TASKBAR/TASKBAR.png');
+    background-repeat: no-repeat;
+    background-position: top left;
+    -webkit-app-region: drag;
+    z-index: 1000;
+}
+
+#game-area {
+    position: absolute;
+    top: 10px;
+    left: 0;
+    width: 900px;
+    height: 700px;
+    overflow: hidden;
+    background: #0a0a0a;
+    z-index: 1;
+}
+
+/* Ниша под иконку в спрайте TASKBAR.png (x:9–41, y:9–41, жёлто-оранжевый гем) */
+#titlebar-icon-slot {
+    position: absolute;
+    left: 9px;
+    top: 9px;
+    width: 32px;
+    height: 32px;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+#titlebar-icon-slot canvas {
     width: 100%;
     height: 100%;
+    display: block;
+}
+
+/* Вырезы под кнопки в TASKBAR.png (900x50): свернуть x:842–866, закрыть x:867–891, оба y:14–38 */
+.titlebar-btn {
+    position: absolute;
+    top: 14px;
+    width: 24px;
+    height: 24px;
+    -webkit-app-region: no-drag;
+    cursor: pointer;
+}
+
+#titlebar-collapse { left: 842px; }
+#titlebar-close    { left: 867px; }
+
+.background-container {
+    position: absolute;
+    inset: 0;
     z-index: -1;
     transition: transform 0.1s ease-out;
 }
@@ -54,22 +106,16 @@ body {
 }
 
 .vignette {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    inset: 0;
     background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.7) 100%);
     pointer-events: none;
     z-index: 1;
 }
 
 .scanlines {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    inset: 0;
     background: repeating-linear-gradient(
         0deg,
         rgba(0, 0, 0, 0.15) 0px,
@@ -95,7 +141,7 @@ body {
 .container {
     position: relative;
     width: 100%;
-    height: 100vh;
+    height: 100%;
     padding: 0;
     display: flex;
     flex-direction: column;
@@ -223,7 +269,7 @@ body {
 
 .settings-button {
     position: absolute;
-    top: 30px;
+    top: 56px;
     left: 30px;
     width: 60px;
     height: 60px;

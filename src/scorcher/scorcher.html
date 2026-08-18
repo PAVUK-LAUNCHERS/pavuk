@@ -8,36 +8,6 @@
 </head>
 <body>
 
-    <!-- SVG-фильтры -->
-    <svg style="position:absolute;width:0;height:0;overflow:hidden" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-            <!--
-                Зерно строго по непрозрачным пикселям лого:
-                1. Генерируем шум
-                2. Сжимаем к нейтральному 50% серому — soft-light не сдвигает яркость
-                3. feComposite operator="in" noise IN SourceGraphic:
-                   результат получает АЛЬФУ из SourceGraphic — шум исчезает там где лого прозрачно
-                4. feBlend soft-light: накладываем подготовленный шум на оригинал
-                   — только непрозрачные пиксели получают текстуру
-            -->
-            <filter id="logo-grain" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
-                <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" stitchTiles="stitch" result="noise"/>
-                <!-- Расширяем диапазон шума вокруг нейтрального серого (интенсивнее, чем было) -->
-                <feColorMatrix type="matrix"
-                    values="0.55 0 0 0 0.22
-                            0.55 0 0 0 0.22
-                            0.55 0 0 0 0.22
-                            0    0 0 1 0"
-                    in="noise" result="neutralNoise"/>
-                <!-- Ключ: обрезаем шум по альфе лого ДО blend — прозрачное = нет шума -->
-                <feComposite in="neutralNoise" in2="SourceGraphic" operator="in" result="maskedNoise"/>
-                <!-- Теперь накладываем уже замаскированный шум на оригинал -->
-                <feBlend in="SourceGraphic" in2="maskedNoise" mode="soft-light"/>
-            </filter>
-
-        </defs>
-    </svg>
-
     <!-- Кастомный тайтлбар (frame: false в scorcher_main.js) — ширина жёстко 900px, окно не ресайзится -->
     <div id="custom-titlebar">
         <div id="titlebar-icon-slot">
@@ -66,6 +36,7 @@
             <div class="logo-wrapper">
                 <div class="logo-glow"></div>
                 <img class="logo-img" src="../../assets/img/Scorcher/SCORCHER_THE_HARAMONY.png" alt="Scorcher: The Harmony">
+                <canvas class="logo-grain-canvas"></canvas>
             </div>
         </div>
 

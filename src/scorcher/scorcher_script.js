@@ -10,102 +10,120 @@ document.addEventListener('DOMContentLoaded', function () {
 
     let sandstormFinished = false;
 
-    // ─── ЗЕРНО НА ФОН (canvas) ────────────────────────────────────────────────
-    let grainInterval = null;
-    let grainResizeHandler = null;
-    let grainCanvas = null;
-    let grainCtx = null;
-
-    // Рендерим шум в 1/GRAIN_DOWNSCALE разрешении и растягиваем через CSS (width/height:100% в scorcher.css) —
-    // при opacity:0.04 деталь на полном разрешении визуально неотличима от даунскейла, а пикселей
-    // для генерации в GRAIN_DOWNSCALE² раз меньше (16x при значении 4). imageSmoothingEnabled=false
-    // не даёт браузеру размыть апскейл в блюр — зерно остаётся зерном, просто крупнее по площади пикселя.
-    const GRAIN_DOWNSCALE = 4;
-
-    function initGrainBg() {
-        grainCanvas = document.getElementById('grain-bg');
-        if (!grainCanvas) return;
-        grainCtx = grainCanvas.getContext('2d');
-        grainCtx.imageSmoothingEnabled = false;
-
-        grainResizeHandler = function () {
-            grainCanvas.width  = Math.ceil(window.innerWidth  / GRAIN_DOWNSCALE);
-            grainCanvas.height = Math.ceil(window.innerHeight / GRAIN_DOWNSCALE);
-        };
-        grainResizeHandler();
-        window.addEventListener('resize', grainResizeHandler);
-    }
-
-    function drawGrain() {
-        const w = grainCanvas.width;
-        const h = grainCanvas.height;
-        const imageData = grainCtx.createImageData(w, h);
+    // ─── ЗЕРНО: ОБЩИЙ ГЕНЕРАТОР ПРЕДПРОСЧИТАННЫХ КАДРОВ ─────────────────────────
+    // Общая фабрика для двух независимых зерновых анимаций (фон и лого) — каждая своя
+    // по числу кадров/fps/разрешению, но принцип один: N шумовых кадров строятся один раз
+    // (при старте/восстановлении), дальше только переключение уже готового кадра по таймеру —
+    // никакого createImageData на каждый тик.
+    function buildGrainFrame(w, h) {
+        const frame = document.createElement('canvas');
+        frame.width = w;
+        frame.height = h;
+        const fctx = frame.getContext('2d');
+        const imageData = fctx.createImageData(w, h);
         const data = imageData.data;
         for (let i = 0; i < data.length; i += 4) {
             const v = Math.random() * 255 | 0;
-            data[i]     = v;
-            data[i + 1] = v;
-            data[i + 2] = v;
-            data[i + 3] = 255;
+            data[i] = v; data[i + 1] = v; data[i + 2] = v; data[i + 3] = 255;
         }
-        grainCtx.putImageData(imageData, 0, 0);
+        fctx.putImageData(imageData, 0, 0);
+        return frame;
     }
 
-    function startGrainBg() {
-        if (!grainCanvas || !grainCanvas.width) initGrainBg();
-        if (!grainCanvas || grainInterval) return;
-        const FPS = 18;
-        drawGrain();
-        grainInterval = setInterval(drawGrain, 1000 / FPS);
+    function createFrameGrain({ getCanvas, downscale, frameCount, frameMs, sizeFn }) {
+        let canvas = null, ctx = null, frames = [], frameIndex = 0, interval = null;
+
+        function init() {
+            canvas = getCanvas();
+            if (!canvas) return;
+            ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            const { w, h } = sizeFn();
+            canvas.width  = Math.max(1, Math.ceil(w / downscale));
+            canvas.height = Math.max(1, Math.ceil(h / downscale));
+        }
+
+        function buildFrames() {
+            if (!canvas || !canvas.width) return;
+            frames = [];
+            for (let i = 0; i < frameCount; i++) {
+                frames.push(buildGrainFrame(canvas.width, canvas.height));
+            }
+        }
+
+        function draw() {
+            if (!ctx || !frames.length) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(frames[frameIndex], 0, 0);
+            frameIndex = (frameIndex + 1) % frameCount;
+        }
+
+        function start() {
+            if (!canvas || !canvas.width) init();
+            if (!canvas || interval) return;
+            if (!frames.length) buildFrames();
+            draw();
+            interval = setInterval(draw, frameMs);
+        }
+
+        function stop() {
+            if (interval) { clearInterval(interval); interval = null; }
+            // Полная детерминация: сбрасываем закэшированные кадры и зануляем канвас — не только
+            // останавливаем таймер, но и освобождаем backing store/оффскрин-канвасы кадров.
+            frames = [];
+            frameIndex = 0;
+            if (canvas) { canvas.width = 0; canvas.height = 0; }
+        }
+
+        // Пересчитать размер и кадры заново (напр. когда картинка лого догрузилась и реальный
+        // размер стал известен только постфактум) — без этого зерно так и осталось бы 1×1.
+        function refresh() {
+            const wasRunning = !!interval;
+            stop();
+            if (wasRunning) start();
+        }
+
+        return { start, stop, refresh };
     }
 
-    function stopGrainBg() {
-        if (grainInterval) { clearInterval(grainInterval); grainInterval = null; }
-        // Полная детерминация: остановка таймера не уменьшает backing store самого канваса —
-        // зануляем размер явно, initGrainBg() на следующем startGrainBg() пересоздаст.
-        if (grainCanvas) { grainCanvas.width = 0; grainCanvas.height = 0; }
-    }
+    // ─── ЗЕРНО НА ФОН: 18 кадров, 3 fps ────────────────────────────────────────
+    const bgGrain = createFrameGrain({
+        getCanvas: () => document.getElementById('grain-bg'),
+        downscale: 4,          // даунскейл разрешения, растянуто через CSS 100%
+        frameCount: 18,
+        frameMs: Math.round(1000 / 3), // 3 fps
+        sizeFn: () => ({ w: window.innerWidth, h: window.innerHeight }) // окно 900x700, resizable:false
+    });
 
-    // ─── ЗЕРНО НА ЛОГО (анимация SVG feTurbulence) ───────────────────────────
-    let logoGrainInterval = null;
-    let logoGrainT = 0;
+    // ─── ЗЕРНО НА ЛОГО: 6 кадров, 1 fps ────────────────────────────────────────
+    // Раньше — SVG feTurbulence, растеризуемый на CPU каждый тик. Заменено на тот же
+    // canvas-принцип, что и у фонового зерна: `.logo-grain-canvas` (см. scorcher.html/css,
+    // mix-blend-mode: soft-light) поверх `.logo-img`, размер берётся из `.logo-wrapper`.
+    const logoGrain = createFrameGrain({
+        getCanvas: () => document.querySelector('.logo-grain-canvas'),
+        downscale: 1,   // шум 1:1 к реальному пикселю лого (было ×3 — зерно выглядело крупными 3×3px блоками),
+                        // дороже по createImageData, но лого-канвас маленький (не весь экран, как у фона),
+                        // и считается 6 раз при старте/восстановлении, а не на каждом тике — цена оправдана.
+        frameCount: 6,
+        frameMs: 1000, // 1 fps
+        sizeFn: () => {
+            const wrapper = document.querySelector('.logo-wrapper');
+            const w = wrapper ? wrapper.clientWidth  : 0;
+            const h = wrapper ? wrapper.clientHeight : 0;
+            return { w: w || 400, h: h || 300 }; // фолбэк, пока картинка/layout ещё не готовы
+        }
+    });
 
-    function startLogoGrain() {
-        if (logoGrainInterval) return;
-        const turbulence = document.querySelector('#logo-grain feTurbulence');
-        if (!turbulence) return;
-
-        const BASE = 0.72;
-        const AMP  = 0.06;
-
-        // Тик замедлен вдвое (было 55мс) — feTurbulence растеризуется на CPU и это самый
-        // дорогой эффект из трёх, каждая смена seed/baseFrequency форсит перерасчёт заново.
-        // Шаг по t увеличен вдвое, чтобы скорость самой волны визуально не изменилась —
-        // глаз не различает разницу между 18 и 9 обновлениями/сек в медленно дышащем шуме.
-        logoGrainInterval = setInterval(() => {
-            logoGrainT += 0.08;
-            const fx = BASE + Math.sin(logoGrainT * 1.3) * AMP;
-            const fy = BASE + Math.cos(logoGrainT * 0.9) * AMP;
-            turbulence.setAttribute('baseFrequency', `${fx.toFixed(4)} ${fy.toFixed(4)}`);
-            turbulence.setAttribute('seed', (Math.random() * 1000 | 0).toString());
-        }, 110);
-    }
-
-    function stopLogoGrain() {
-        if (logoGrainInterval) { clearInterval(logoGrainInterval); logoGrainInterval = null; }
-    }
-
-    // Полная детерминация: таймер остановлен, но feTurbulence всё равно растеризован и Chromium
-    // держит его как отдельный composited layer, пока фильтр применён к #logo-grain в CSS.
-    // Самый надёжный способ сбросить этот кэш — временно снять фильтр с логотипа, чтобы
-    // Chromium освободил GPU-текстуру, и вернуть фильтр обратно на window-restored.
+    // Размер `.logo-wrapper` зависит от натурального соотношения сторон `SCORCHER_THE_HARAMONY.png`
+    // (через object-fit: contain) — при первом запуске картинка может ещё не успеть догрузиться,
+    // поэтому пересчитываем кадры лого-зерна ещё раз после её onload/если уже закэширована.
     const logoImgEl = document.querySelector('.logo-img');
-
-    function destroyLogoGrainFilter() {
-        if (logoImgEl) logoImgEl.style.filter = 'none';
-    }
-    function restoreLogoGrainFilter() {
-        if (logoImgEl) logoImgEl.style.filter = '';
+    if (logoImgEl) {
+        if (logoImgEl.complete) {
+            logoGrain.refresh();
+        } else {
+            logoImgEl.addEventListener('load', () => logoGrain.refresh(), { once: true });
+        }
     }
 
     // ─── ГОЛОГРАММА ИКОНКИ В НИШЕ ТАЙТЛБАРА ────────────────────────────────────
@@ -119,7 +137,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const ICON_RES        = 64;
     const ICON_STRIP_H    = 4;
     const ICON_WAVE_AMP   = 3.5;
-    const ICON_WAVE_SPEED = 0.5;
+    const ICON_WAVE_SPEED = Math.PI / 3; // период волны = 2π/SPEED = 6с (было 0.5 рад/с → ≈12.57с)
     const ICON_WAVE_FREQ  = 0.55;
     const ICON_TINT_DARK  = [18, 30, 60];
     const ICON_TINT_LIGHT = [175, 225, 255];
@@ -242,18 +260,16 @@ document.addEventListener('DOMContentLoaded', function () {
     function startHeavyEffects() {
         restoreBgVideo();
         restoreSandstormVideo();
-        restoreLogoGrainFilter();
-        startGrainBg();
-        startLogoGrain();
+        bgGrain.start();
+        logoGrain.start();
         startIconHologram();
     }
 
     function stopHeavyEffects() {
-        stopGrainBg();
-        stopLogoGrain();
+        bgGrain.stop();
+        logoGrain.stop();
         stopIconHologram();
         destroyIconHologramCache();
-        destroyLogoGrainFilter();
         destroyBgVideo();
         destroySandstormVideo();
     }
