@@ -11,10 +11,6 @@ document.addEventListener('DOMContentLoaded', function () {
     let sandstormFinished = false;
 
     // ─── ЗЕРНО: ОБЩИЙ ГЕНЕРАТОР ПРЕДПРОСЧИТАННЫХ КАДРОВ ─────────────────────────
-    // Общая фабрика для двух независимых зерновых анимаций (фон и лого) — каждая своя
-    // по числу кадров/fps/разрешению, но принцип один: N шумовых кадров строятся один раз
-    // (при старте/восстановлении), дальше только переключение уже готового кадра по таймеру —
-    // никакого createImageData на каждый тик.
     function buildGrainFrame(w, h) {
         const frame = document.createElement('canvas');
         frame.width = w;
@@ -68,15 +64,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
         function stop() {
             if (interval) { clearInterval(interval); interval = null; }
-            // Полная детерминация: сбрасываем закэшированные кадры и зануляем канвас — не только
-            // останавливаем таймер, но и освобождаем backing store/оффскрин-канвасы кадров.
             frames = [];
             frameIndex = 0;
             if (canvas) { canvas.width = 0; canvas.height = 0; }
         }
 
-        // Пересчитать размер и кадры заново (напр. когда картинка лого догрузилась и реальный
-        // размер стал известен только постфактум) — без этого зерно так и осталось бы 1×1.
         function refresh() {
             const wasRunning = !!interval;
             stop();
@@ -89,34 +81,26 @@ document.addEventListener('DOMContentLoaded', function () {
     // ─── ЗЕРНО НА ФОН: 18 кадров, 3 fps ────────────────────────────────────────
     const bgGrain = createFrameGrain({
         getCanvas: () => document.getElementById('grain-bg'),
-        downscale: 4,          // даунскейл разрешения, растянуто через CSS 100%
+        downscale: 4,
         frameCount: 18,
-        frameMs: Math.round(1000 / 3), // 3 fps
-        sizeFn: () => ({ w: window.innerWidth, h: window.innerHeight }) // окно 900x700, resizable:false
+        frameMs: Math.round(1000 / 3),
+        sizeFn: () => ({ w: window.innerWidth, h: window.innerHeight })
     });
 
     // ─── ЗЕРНО НА ЛОГО: 6 кадров, 1 fps ────────────────────────────────────────
-    // Раньше — SVG feTurbulence, растеризуемый на CPU каждый тик. Заменено на тот же
-    // canvas-принцип, что и у фонового зерна: `.logo-grain-canvas` (см. scorcher.html/css,
-    // mix-blend-mode: soft-light) поверх `.logo-img`, размер берётся из `.logo-wrapper`.
     const logoGrain = createFrameGrain({
         getCanvas: () => document.querySelector('.logo-grain-canvas'),
-        downscale: 1,   // шум 1:1 к реальному пикселю лого (было ×3 — зерно выглядело крупными 3×3px блоками),
-                        // дороже по createImageData, но лого-канвас маленький (не весь экран, как у фона),
-                        // и считается 6 раз при старте/восстановлении, а не на каждом тике — цена оправдана.
+        downscale: 1,
         frameCount: 6,
         frameMs: 1000, // 1 fps
         sizeFn: () => {
             const wrapper = document.querySelector('.logo-wrapper');
             const w = wrapper ? wrapper.clientWidth  : 0;
             const h = wrapper ? wrapper.clientHeight : 0;
-            return { w: w || 400, h: h || 300 }; // фолбэк, пока картинка/layout ещё не готовы
+            return { w: w || 400, h: h || 300 };
         }
     });
 
-    // Размер `.logo-wrapper` зависит от натурального соотношения сторон `SCORCHER_THE_HARAMONY.png`
-    // (через object-fit: contain) — при первом запуске картинка может ещё не успеть догрузиться,
-    // поэтому пересчитываем кадры лого-зерна ещё раз после её onload/если уже закэширована.
     const logoImgEl = document.querySelector('.logo-img');
     if (logoImgEl) {
         if (logoImgEl.complete) {
@@ -127,21 +111,14 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ─── ГОЛОГРАММА ИКОНКИ В НИШЕ ТАЙТЛБАРА ────────────────────────────────────
-    // Canvas-эффект (был SVG-фильтр с шумом — заменён): иконка тонируется в бледно-голубые тона
-    // по яркости каждого пикселя (тёмное → тёмно-синий, светлое → бледно-голубой, альфа не трогается
-    // — прозрачное остаётся прозрачным), затем режется на горизонтальные полоски, и каждая
-    // полоска рисуется со своим сдвигом по X — sin(t*SPEED + индекс_полоски*FREQ) — соседние полоски
-    // рассинхронизированы по фазе — получается медленная бегущая волна, полоски словно плывут
-    // влево-вправо в разнобой. Тонировка считается один раз при загрузке картинки (getImageData/
-    // putImageData), в rAF-цикле только блиттинг полосок — дёшево даже на каждом кадре.
     const ICON_RES        = 64;
     const ICON_STRIP_H    = 4;
     const ICON_WAVE_AMP   = 3.5;
-    const ICON_WAVE_SPEED = Math.PI / 3; // период волны = 2π/SPEED = 6с (было 0.5 рад/с → ≈12.57с)
+    const ICON_WAVE_SPEED = Math.PI / 3;
     const ICON_WAVE_FREQ  = 0.55;
     const ICON_TINT_DARK  = [18, 30, 60];
     const ICON_TINT_LIGHT = [175, 225, 255];
-    const ICON_STRIPE_DARKEN = 0.14; // насколько темнее каждая вторая полоска (0–1, чёрное — едва заметно)
+    const ICON_STRIPE_DARKEN = 0.14;
     const ICON_SRC        = '../../assets/icons/SCOROBEY.ico';
 
     const iconCanvas = document.getElementById('titlebar-icon-canvas');
@@ -167,8 +144,6 @@ document.addEventListener('DOMContentLoaded', function () {
         return off;
     }
 
-    // Затемнённая копия уже тонированного канваса — source-atop кладёт чёрный оверлей ТОЛЬКО на уже
-    // непрозрачные пиксели иконки, альфа снаружи не трогается — точно так же, как в кнопках тайтлбара (drawPressed).
     function buildDarkenedCopy(sourceCanvas, amount) {
         const off = document.createElement('canvas');
         off.width = sourceCanvas.width;
@@ -220,11 +195,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (iconRafId) { cancelAnimationFrame(iconRafId); iconRafId = null; }
     }
 
-    // pause() останавливает воспроизведение, но НЕ освобождает decode buffer видеодекодера —
-    // Chromium держит его выделенным всё время, пока у <video> есть src. removeAttribute('src') + load()
-    // реально сбрасывает декодированные буферы — главный источник RAM, не освобождавшийся прежним
-    // stopHeavyEffects() за многочасовую игровую сессию. Как только лаунчер скрыт — сами видео
-    // никому не видны, поэтому выгода терять воспроизведение в момент скрытия нет.
     const BG_VIDEO_SRC        = bgVideo.getAttribute('src');
     const SANDSTORM_VIDEO_SRC = sandstormVideo.getAttribute('src');
 
@@ -249,9 +219,6 @@ document.addEventListener('DOMContentLoaded', function () {
         sandstormVideo.load();
     }
 
-    // 64x64 оффскрин-канвасы голограммы иконки сами по себе дешёвы и не являются источником роста
-    // памяти, но для полной детерминации всех рендер-объектов при скрытии освобождаем и их —
-    // пересчёт при следующем startIconHologram() дешёв (один getImageData на 64x64).
     function destroyIconHologramCache() {
         iconTintedCanvas = null;
         iconTintedDarkCanvas = null;
@@ -276,10 +243,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     startHeavyEffects();
 
-    // ─── Кнопки тайтлбара (свернуть/закрыть) ───────────────────────────────────
-    // Каждая кнопка — отдельный <canvas>, состояние нажатия рисуется прямо на канвасе через
-    // globalCompositeOperation='source-atop' — затемняющий слой ложится ТОЛЬКО поверх уже нарисованных
-    // непрозрачных пикселей спрайта — прозрачный фон кнопки не темнеет. Без ховер-свечения, только реакция на клик.
+    // ─── Кнопки тайтлбара ───────────────────────────────────
     const titlebarButtons = [
         { canvas: document.getElementById('titlebar-collapse'), src: '../../assets/img/Scorcher/TASKBAR/COLLAPSE.png', action: () => { if (window.electronAPI) window.electronAPI.minimizeWindow(); } },
         { canvas: document.getElementById('titlebar-close'),    src: '../../assets/img/Scorcher/TASKBAR/CLOSE.png',    action: () => { if (window.electronAPI) window.electronAPI.closeWindow(); } }
@@ -329,7 +293,7 @@ document.addEventListener('DOMContentLoaded', function () {
             sandstormFinished = false;
             if (fadeAudioInterval) { clearInterval(fadeAudioInterval); fadeAudioInterval = null; }
             stopWeekendTimer();
-            stopHeavyEffects(); // pause + destroySandstormVideo/destroyBgVideo уже внутри — ручный pause/currentTime выше больше не нужен
+            stopHeavyEffects();
         });
 
         window.electronAPI.onStatusUpdate((status) => {
@@ -382,7 +346,6 @@ document.addEventListener('DOMContentLoaded', function () {
             startWeekendTimer();
             startHeavyEffects();
 
-            // Лаунчер снова показан — разрешаем новый клик
             launchInProgress = false;
             serverButtons.forEach(b => b.style.pointerEvents = '');
         });
@@ -398,7 +361,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ─── Музыка ───────────────────────────────────────────────────────────────
     let musicStarted = false;
     let fadeAudioInterval = null;
-    let launchInProgress = false; // защита от повторных кликов по кнопке сервера
+    let launchInProgress = false;
 
     function startMusic() {
         if (!musicStarted) {
@@ -410,7 +373,6 @@ document.addEventListener('DOMContentLoaded', function () {
     document.addEventListener('mousemove', startMusic, { once: true });
     document.addEventListener('click',     startMusic, { once: true });
 
-    // ─── Клик по серверу ──────────────────────────────────────────────────────
     // ─── Бейдж уведомления об обновлении ───────────────────────────────────
     let updateBadge = null;
 
@@ -421,9 +383,9 @@ document.addEventListener('DOMContentLoaded', function () {
             updateBadge.id = 'update-badge';
             Object.assign(updateBadge.style, {
                 position: 'fixed',
-                top: '60px', // ниже custom-titlebar (TASKBAR.png занимает 0–50px + отступ)
+                top: '60px',
                 left: '10px',
-                zIndex: '999', // ниже #custom-titlebar (z-index:1000), чтобы не перекрывать спрайт таскбара
+                zIndex: '999',
                 background: 'rgba(20, 8, 0, 0.9)',
                 border: '1px solid #ff6a00',
                 color: '#ffaa66',
@@ -475,7 +437,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     serverButtons.forEach(button => {
         button.addEventListener('click', function () {
-            if (launchInProgress) return; // игнорируем повторные клики, пока идёт sandstorm/запуск
+            if (launchInProgress) return;
             launchInProgress = true;
             serverButtons.forEach(b => b.style.pointerEvents = 'none');
 
@@ -552,19 +514,18 @@ document.addEventListener('DOMContentLoaded', function () {
         };
     }
 
-    // Возвращает расписание окна показа для текущего региона сообщества
     function getWeekendSchedule() {
         if (currentCommunity === 'kz') {
             return {
                 timeZone: 'UTC',
-                startMinute: 0 * 1440 + 15 * 60, // воскресенье 15:00 GMT
-                endMinute:   1 * 1440 + 0         // понедельник 00:00 GMT
+                startMinute: 0 * 1440 + 15 * 60,
+                endMinute:   1 * 1440 + 0
             };
         }
         return {
             timeZone: 'Europe/Moscow',
-            startMinute: 5 * 1440 + 18 * 60, // пятница 18:00 МСК
-            endMinute:   6 * 1440 + 2 * 60    // суббота 02:00 МСК
+            startMinute: 5 * 1440 + 18 * 60,
+            endMinute:   6 * 1440 + 2 * 60
         };
     }
 

@@ -16,7 +16,6 @@
             box-sizing: border-box;
         }
 
-        /* Custom Cyberpunk Scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
         }
@@ -344,7 +343,7 @@
                 };
                 key = map[code] || null;
             }
-            if (!key) return null; // нажат только модификатор — ждём основную клавишу
+            if (!key) return null;
             parts.push(key);
             return parts.join('+');
         }
@@ -364,11 +363,8 @@
         function onHotkeyKeydown(e) {
             e.preventDefault();
             e.stopPropagation();
-            // Отмена записи по Escape убрана — любая клавиша, включая Escape (с модификаторами и без),
-            // теперь просто назначается как хоткей через общий путь keyEventToAccelerator.
-            // Чтобы отменить запись — повторный клик по SET.
             const accel = keyEventToAccelerator(e);
-            if (!accel) return; // был нажат только модификатор, продолжаем слушать
+            if (!accel) return;
             stopListening();
             setHotkey(accel);
         }
@@ -402,7 +398,6 @@
             elements.autoServer.innerHTML = '<option value="">DISABLED</option>' +
                 SERVER_HOSTS.map(s => `<option value="byond://${s.host}:${port}">${s.label}</option>`).join('');
             if (preserveValue) {
-                // Пытаемся восстановить выбор по host, т.к. порт мог измениться
                 const host = preserveValue.replace('byond://', '').replace(/:\d+$/, '');
                 const match = `byond://${host}:${port}`;
                 if ([...elements.autoServer.options].some(o => o.value === match)) {

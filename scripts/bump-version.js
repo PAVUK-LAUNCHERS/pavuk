@@ -1,5 +1,3 @@
-// Bumps "version" in package.json (patch|minor|major) and prints the new version to stdout.
-// Usage: node scripts/bump-version.js patch
 const fs = require('fs');
 const path = require('path');
 
@@ -21,5 +19,4 @@ const newVersion = `${major}.${minor}.${patch}`;
 pkg.version = newVersion;
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 
-// IMPORTANT: this is the only line release.bat parses, keep it as plain stdout.
 console.log(newVersion);

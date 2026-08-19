@@ -4,6 +4,7 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const { isDreamSeekerRunning, killDreamSeeker, stopMonitor } = require('./src/shared/dsProcessMonitor');
+const { UPDATE_CHECK_INTERVAL_MS, checkForUpdates: checkForUpdatesShared } = require('./src/shared/updateChecker');
 
 // ─── Базовые пути (работает и из корня, и из dist/win-unpacked) ───────────────
 const ROOT      = __dirname;
@@ -31,20 +32,10 @@ const MONITOR_INTERVAL_MS = 2000;
 const LAUNCH_GRACE_MS     = 30000;
 
 // ─── Кастомный тайтлбар (frame:false) — размер игровой области и нахлёст тайтлбара ────
-// Аналогично Scorcher: окно на OVERHANG_PX выше игрового прямоугольника, чтобы верхняя
-// часть спрайта TASKBAR.png (гем-ниша слева + скруглённый правый торец), торчащая выше
-// сплошного бара, помещалась в окно, а не обрезалась его прямоугольной границей.
 const GAME_WIDTH  = 900;
 const GAME_HEIGHT = 700;
-const OVERHANG_PX = 10; // строки 0–9 спрайта (900x50) не сплошные на всю ширину, с 10-й — сплошные (проверено по альфе)
+const OVERHANG_PX = 10;
 
-const BACKEND_URL  = 'https://roleplay-n-hookah.vercel.app';
-const GITHUB_REPO  = 'PAVUK-LAUNCHERS/pavuk';
-const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
-
-// app.getVersion() возвращает версию Electron runtime, а не проекта, когда приложение
-// запущено не через electron-builder/asar (наш случай — PAVUK_RELEASE с голым Electron +
-// сырым main.js). Читаем версию напрямую из package.json рядом с main.js.
 let APP_VERSION = '0.0.0';
 try {
     APP_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8')).version || APP_VERSION;
@@ -52,54 +43,10 @@ try {
     console.error('Failed to read version from package.json:', e.message);
 }
 
-function compareVersions(a, b) {
-    const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
-    const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
-    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-        const na = pa[i] || 0, nb = pb[i] || 0;
-        if (na !== nb) return na > nb ? 1 : -1;
-    }
-    return 0;
-}
-
-async function fetchWithTimeout(url, ms) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), ms);
-    try {
-        const res = await fetch(url, { signal: controller.signal });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
-    } finally {
-        clearTimeout(timer);
-    }
-}
-
 async function checkForUpdates() {
-    const currentVersion = APP_VERSION;
-    let remote = null;
-
-    try {
-        const data = await fetchWithTimeout(`${BACKEND_URL}/api/version`, 5000);
-        remote = { version: data.version, notes: data.notes, url: data.downloadUrl };
-    } catch (e) {
-        console.warn('[update] Бэкенд недоступен, пробуем GitHub Releases:', e.message);
-    }
-
-    if (!remote) {
-        try {
-            const data = await fetchWithTimeout(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, 5000);
-            const version = String(data.tag_name || '').replace(/^v/i, '');
-            if (version) remote = { version, notes: data.body || '', url: data.html_url };
-        } catch (e) {
-            console.warn('[update] GitHub Releases тоже недоступен:', e.message);
-        }
-    }
-
-    if (!remote || !remote.version) return;
-
-    if (compareVersions(remote.version, currentVersion) > 0 && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('update-available', remote);
-    }
+    await checkForUpdatesShared(APP_VERSION, (remote) => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-available', remote);
+    });
 }
 
 // ─── Настройки ────────────────────────────────────────────────────────────────
@@ -136,7 +83,6 @@ function registerExitHotkey() {
     if (!state.exitHotkey) return;
     try {
         const ok = globalShortcut.register(state.exitHotkey, () => {
-            // Просто убиваем dreamseeker.exe — дальше processMonitorTask сам вернёт лаунчер на экран (PLAYING → IDLE → showLauncher)
             killDreamSeeker();
         });
         if (!ok) console.error('[hotkey] Не удалось зарегистрировать горячую клавишу:', state.exitHotkey, '(возможно занята другим приложением/вторым лаунчером)');
@@ -145,7 +91,7 @@ function registerExitHotkey() {
     }
 }
 
-// ─── Создание ярлыка PAVUK на рабочем столе (один раз при первом запуске) ─────
+// ─── Создание ярлыка PAVUK на рабочем столе ─────
 function createDesktopShortcut() {
     const flagFile = path.join(app.getPath('userData'), 'pavuk-shortcut-created.flag');
     if (fs.existsSync(flagFile)) return;
@@ -192,7 +138,7 @@ function createTray() {
     tray.on('double-click', () => showLauncher());
 }
 
-// ─── Хитбокс окна: обрезка под силуэт тайтлбара в зоне нахлёста (аналогично Scorcher) ──
+// ─── Хитбокс окна: обрезка под силуэт тайтлбара в зоне нахлёста ──
 function computeTitlebarOverhangRects() {
     const taskbarPath = path.join(ASSETS, 'img', 'TASKBAR', 'TASKBAR.png');
     let img;
@@ -326,9 +272,6 @@ function createSettingsWindow() {
     settingsWindow.on('closed', () => { settingsWindow = null; });
 }
 
-// isDreamSeekerRunning()/killDreamSeeker() теперь живут в src/shared/dsProcessMonitor.js —
-// общий постоянный PowerShell-хост вместо wmic (см. комментарии в этом файле).
-
 // ─── Скрыть / показать лаунчер ────────────────────────────────────────────────
 function hideLauncher() {
     if (mainWindow && !mainWindow.isDestroyed() && !isHidden) {
@@ -366,7 +309,7 @@ async function launchDreamSeeker(url, statusText) {
 function handleManualLaunch(url) { launchDreamSeeker(url, 'CONNECTING...'); }
 function handleAutoLaunch(url)   { launchDreamSeeker(url, 'AUTO-CONNECTING...'); }
 
-// ─── Мониторинг процессов (конечный автомат) ──────────────────────────────────
+// ─── Мониторинг процессов ──────────────────────────────────
 async function processMonitorTask() {
     const { running, hasChild } = await isDreamSeekerRunning();
 
@@ -395,7 +338,7 @@ async function processMonitorTask() {
             } else if (state.childSeen) {
                 state.dsPhase = 'IDLE';
                 showLauncher();
-                killDreamSeeker(); // без await — чистим зомби в фоне, не блокируя показ UI
+                killDreamSeeker();
             }
             break;
     }
@@ -460,7 +403,7 @@ app.whenReady().then(() => {
         if (state.autoServer)
             mainWindow.webContents.send('auto-info-update', { server: state.autoServer, time: state.autoTime });
         mainWindow.webContents.send('servers-config-update', { community: state.community });
-        checkForUpdates(); // первая проверка после того как renderer точно готов слушать IPC
+        checkForUpdates();
     });
 });
 

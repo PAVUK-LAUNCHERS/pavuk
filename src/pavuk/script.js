@@ -11,31 +11,19 @@ document.addEventListener('DOMContentLoaded', function() {
     backgroundMusic.volume = 0.5;
 
     // ─── ГОЛОГРАММА ИКОНКИ В НИШЕ ТАЙТЛБАРА ────────────────────────────────────
-    // Тот же принцип, что и у Scorcher (тонировка по яркости + разбивка на горизонтальные
-    // полоски), но вместо плавной бегущей волны — "лагающая" голограмма: большую часть времени
-    // иконка стоит на месте, и раз в 1–3 секунды ОДНА случайная полоска резко дёргается вбок
-    // и почти сразу возвращается (имитация сбоя сигнала), а не постоянное синхронное покачивание.
-    // Палитра — жёлто-оранжевая (в цвет TASKBAR.png/лого лаунчера), не голубая, как у Scorcher.
     const ICON_RES        = 64;
     const ICON_STRIP_H    = 4;
-    const ICON_DRAW_SIZE  = 60;            // размер иконки внутри 64px канваса (по краям — поля)
-    const ICON_TINT_DARK  = [60, 28, 0];    // тёмно-оранжевый (тень)
-    const ICON_TINT_LIGHT = [255, 205, 90]; // светлый жёлто-оранжевый (свет)
-    const ICON_STRIPE_DARKEN = 0.14;        // насколько темнее каждая вторая полоска
+    const ICON_DRAW_SIZE  = 60;
+    const ICON_TINT_DARK  = [60, 28, 0];   
+    const ICON_TINT_LIGHT = [255, 205, 90];
+    const ICON_STRIPE_DARKEN = 0.14;
     const ICON_SRC        = '../../assets/icons/PAVUK.ico';
-
-    // Микро-волна: очень малая амплитуда, почти незаметное покачивание
-    const ICON_WAVE_AMP   = 0.8;   // px — в разы меньше чем у Scorcher (3.5px)
-    const ICON_WAVE_SPEED = 3;  // рад/с (медленно)
-    const ICON_WAVE_FREQ  = 0.3;   // рад/полоску (мелкая рябь)
-
-    // Пульсация opacity
-    const ICON_PULSE_SPEED = 1.3;  // рад/с → период ≈ 4.8с
-    const ICON_PULSE_MIN   = 0.6;  // мин. opacity
-    const ICON_PULSE_MAX   = 1.0;  // макс. opacity
-
-    // Параметры лаг-сдвига: раз в 1–3 сек одна случайная полоска резко дёргается вбок
-    // и возвращается обратно за GLITCH_DURATION мс (имитация сбоя сигнала).
+    const ICON_WAVE_AMP   = 0.8;
+    const ICON_WAVE_SPEED = 3;
+    const ICON_WAVE_FREQ  = 0.3;
+    const ICON_PULSE_SPEED = 1.3;
+    const ICON_PULSE_MIN   = 0.6;
+    const ICON_PULSE_MAX   = 1.0;
     const GLITCH_MIN_DELAY_MS = 500;
     const GLITCH_MAX_DELAY_MS = 1500;
     const GLITCH_DURATION_MS  = 90;
@@ -52,7 +40,6 @@ document.addEventListener('DOMContentLoaded', function() {
         off.width = ICON_RES;
         off.height = ICON_RES;
         const octx = off.getContext('2d');
-        // Рисуем иконку меньшего размера по центру канваса (оставляем поля по краям)
         const offset = (ICON_RES - ICON_DRAW_SIZE) / 2;
         octx.drawImage(img, offset, offset, ICON_DRAW_SIZE, ICON_DRAW_SIZE);
 
@@ -68,9 +55,6 @@ document.addEventListener('DOMContentLoaded', function() {
         octx.putImageData(imgData, 0, 0);
         return off;
     }
-
-    // Затемнённая копия уже тонированного канваса — source-atop кладёт чёрный оверлей ТОЛЬКО
-    // на уже непрозрачные пиксели иконки (та же техника, что и в drawPressed() у кнопок тайтлбара).
     function buildDarkenedCopy(sourceCanvas, amount) {
         const off = document.createElement('canvas');
         off.width = sourceCanvas.width;
@@ -87,12 +71,10 @@ document.addEventListener('DOMContentLoaded', function() {
     function drawIconHologramFrame(tsMs) {
         if (!iconCtx || !iconTintedCanvas) return;
         const t = tsMs / 1000;
-        // Пульсация opacity: медленно меняется от ICON_PULSE_MIN до ICON_PULSE_MAX
         const pulse = ICON_PULSE_MIN + (ICON_PULSE_MAX - ICON_PULSE_MIN) * (0.5 + 0.5 * Math.sin(t * ICON_PULSE_SPEED));
         iconCtx.clearRect(0, 0, ICON_RES, ICON_RES);
         iconCtx.globalAlpha = pulse;
         for (let y = 0, stripIndex = 0; y < ICON_RES; y += ICON_STRIP_H, stripIndex++) {
-            // Микро-волна на всех полосках + глич поверх неё для одной случайной полоски
             const waveDx = Math.sin(t * ICON_WAVE_SPEED + stripIndex * ICON_WAVE_FREQ) * ICON_WAVE_AMP;
             const dx = (stripIndex === glitchStripIndex) ? glitchOffsetX : waveDx;
             const src = (stripIndex % 2 === 1) ? iconTintedDarkCanvas : iconTintedCanvas;
@@ -102,8 +84,6 @@ document.addEventListener('DOMContentLoaded', function() {
         iconRafId = requestAnimationFrame(drawIconHologramFrame);
     }
 
-    // Раз в 1–3 сек выбирает случайную полоску и резко сдвигает её вбок, затем возвращает
-    // на место — имитация "лага" голограммы, а не плавная бегущая волна.
     function scheduleGlitch() {
         const delay = GLITCH_MIN_DELAY_MS + Math.random() * (GLITCH_MAX_DELAY_MS - GLITCH_MIN_DELAY_MS);
         glitchTimeoutId = setTimeout(() => {
@@ -157,10 +137,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     startIconHologram();
 
-    // ─── Кнопки тайтлбара (свернуть/закрыть) ───────────────────────────────────
-    // Каждая кнопка — отдельный <canvas>, состояние нажатия рисуется прямо на канвасе через
-    // globalCompositeOperation='source-atop' — затемняющий слой ложится ТОЛЬКО поверх уже
-    // нарисованных непрозрачных пикселей спрайта, прозрачный фон кнопки не темнеет.
+    // ─── Кнопки тайтлбара ───────────────────────────────────
     const titlebarButtons = [
         { canvas: document.getElementById('titlebar-collapse'), src: '../../assets/img/TASKBAR/COLLAPSE.png', action: () => { if (window.electronAPI) window.electronAPI.minimizeWindow(); } },
         { canvas: document.getElementById('titlebar-close'),    src: '../../assets/img/TASKBAR/CLOSE.png',    action: () => { if (window.electronAPI) window.electronAPI.closeWindow(); } }
@@ -200,7 +177,6 @@ document.addEventListener('DOMContentLoaded', function() {
             backgroundMusic.volume = volume;
         });
         
-        // Остановка медиа и очистка таймеров перед скрытием
         window.electronAPI.onPrepareHide(() => {
             backgroundMusic.pause();
             backgroundMusic.currentTime = 0;
@@ -210,11 +186,10 @@ document.addEventListener('DOMContentLoaded', function() {
             flash01Video.classList.remove('active');
             if (flashTimeoutId) { clearTimeout(flashTimeoutId); flashTimeoutId = null; }
             if (fadeAudioInterval) { clearInterval(fadeAudioInterval); fadeAudioInterval = null; }
-            stopWeekendTimer(); // экономия CPU/памяти: таймер бесполезен, пока окно скрыто
-            stopIconHologram(); // останавливаем rAF-цикл голограммы иконки, пока лаунчер скрыт
+            stopWeekendTimer();
+            stopIconHologram();
         });
 
-        // Статус-индикатор (CONNECTING... / AUTO-CONNECTING...)
         window.electronAPI.onStatusUpdate((status) => {
             const el = document.getElementById('status-text');
             if (el) {
@@ -223,19 +198,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
 
-        // Инфо об авто-подключении
         window.electronAPI.onAutoInfoUpdate((info) => {
             updateAutoConnectDisplay(info);
         });
 
-        // Обновление портов серверов при смене региона сообщества (RU/KZ) в настройках
         window.electronAPI.onServersConfigUpdate((cfg) => {
             updateServerPorts(cfg.community);
             currentCommunity = cfg.community || 'ru';
-            updateWeekendTimer(); // расписание таймера может зависеть от региона
+            updateWeekendTimer();
         });
 
-        // Уведомление о новой версии (бэкенд / GitHub Releases fallback) — мягкое, без блокировки
         window.electronAPI.onUpdateAvailable((info) => {
             showUpdateBadge(info);
         });
@@ -251,7 +223,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updateBadge.id = 'update-badge';
             Object.assign(updateBadge.style, {
                 position: 'fixed',
-                top: '50px', // ниже верхних UI-элементов (кнопка настроек и т.д.), чтобы не перекрывать их
+                top: '50px',
                 right: '10px',
                 zIndex: '999',
                 background: 'rgba(20, 0, 0, 0.9)',
@@ -278,8 +250,6 @@ document.addEventListener('DOMContentLoaded', function() {
         updateBadge.style.display = info.url ? 'block' : 'none';
     }
 
-    // ─── Переключение портов серверов по региону сообщества ──────────────────
-    // ru = русские порты (1984), kz = английские порты (1923)
     function getPortForCommunity(community) {
         return community === 'kz' ? 1923 : 1984;
     }
@@ -318,14 +288,9 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // ─── Таймер до выходных ─────────────────────────────────────────────────────
-    // RU (community='ru'): окно "PARTY HARD" активно с субботы 11:00 МСК до понедельника 00:00 МСК.
-    // KZ / INTERZONE (community='kz'): окно активно с пятницы 15:00 GMT до ночи с субботы на воскресенье (воскресенье 00:00 GMT).
-    // Таймер останавливается, пока окно скрыто (экономия CPU/памяти в фоне).
     let weekendTimerInterval = null;
 
     function getTimeParts(timeZone) {
-        // Intl.DateTimeFormat с заданной timeZone даёт корректное время независимо
-        // от локального часового пояса и переходов на летнее/зимнее время.
         const fmt = new Intl.DateTimeFormat('en-US', {
             timeZone,
             weekday: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit',
@@ -343,19 +308,18 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
-    // Возвращает расписание окна показа для текущего региона сообщества
     function getWeekendSchedule() {
         if (currentCommunity === 'kz') {
             return {
                 timeZone: 'UTC',
-                startMinute: 5 * 1440 + 15 * 60, // пятница 15:00 GMT
-                endMinute:   0 * 1440 + 0         // воскресенье 00:00 GMT
+                startMinute: 5 * 1440 + 15 * 60,
+                endMinute:   0 * 1440 + 0
             };
         }
         return {
             timeZone: 'Europe/Moscow',
-            startMinute: 6 * 1440 + 11 * 60, // суббота 11:00 МСК
-            endMinute:   1 * 1440 + 0         // понедельник 00:00 МСК
+            startMinute: 6 * 1440 + 11 * 60,
+            endMinute:   1 * 1440 + 0
         };
     }
 
@@ -384,7 +348,6 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // Считаем оставшееся время до старта в секундах
         let minutesUntilStart = startMinute - minutesOfWeek;
         if (minutesUntilStart < 0) minutesUntilStart += 7 * 1440;
         const totalSecondsUntilStart = minutesUntilStart * 60 - secondsOfDay;
@@ -414,7 +377,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     startWeekendTimer();
 
-    // Отображение авто-подключения
     function updateAutoConnectDisplay(info) {
         const el = document.getElementById('auto-connect-info');
         if (!el) return;
@@ -431,7 +393,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let musicStarted = false;
     let flashTimeoutId = null;
     let fadeAudioInterval = null;
-    let launchInProgress = false; // защита от повторных кликов по кнопке сервера
+    let launchInProgress = false;
     function startMusic() {
         if (!musicStarted) {
             backgroundMusic.play().catch(e => console.log('Music autoplay blocked'));
@@ -458,7 +420,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     serverButtons.forEach(button => {
         button.addEventListener('click', function() {
-            if (launchInProgress) return; // игнорируем повторные клики, пока идёт запуск
+            if (launchInProgress) return;
             launchInProgress = true;
             serverButtons.forEach(b => b.style.pointerEvents = 'none');
 
@@ -494,7 +456,6 @@ document.addEventListener('DOMContentLoaded', function() {
         window.electronAPI.onRestore((volume) => {
             backgroundMusic.pause();
             backgroundMusic.currentTime = 0;
-            // Плавное нарастание громкости вместо резкого включения
             const targetVolume = typeof volume === 'number' ? volume : 0.5;
             backgroundMusic.volume = 0;
             backgroundMusic.play().catch(e => console.log('Music autoplay blocked on restore'));
@@ -513,14 +474,12 @@ document.addEventListener('DOMContentLoaded', function() {
             flash01Video.classList.remove('active');
             flash01Video.pause();
             flash01Video.currentTime = 0;
-            // Очистка таймеров перед перезапуском, чтобы не накапливать flash-цепочки
             if (flashTimeoutId) { clearTimeout(flashTimeoutId); flashTimeoutId = null; }
             if (fadeAudioInterval) { clearInterval(fadeAudioInterval); fadeAudioInterval = null; }
             scheduleNextFlash();
-            startWeekendTimer(); // возобновляем таймер при показе лаунчера
-            startIconHologram(); // возобновляем голограмму иконки (тонированные канвасы уже закэшированы, пересчёта не будет)
-
-            // Лаунчер снова показан (успех или таймаут запуска) — разрешаем новый клик
+            startWeekendTimer();
+            startIconHologram();
+            
             launchInProgress = false;
             serverButtons.forEach(b => b.style.pointerEvents = '');
         });

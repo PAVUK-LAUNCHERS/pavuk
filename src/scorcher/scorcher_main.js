@@ -4,11 +4,7 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const { isDreamSeekerRunning, killDreamSeeker, stopMonitor } = require('../shared/dsProcessMonitor');
-
-// chrome://gpu показал GPU0=AMD (встроенная, *ACTIVE*), GPU1=NVIDIA (дискретная, не активна) —
-// Chromium по умолчанию выбрал более слабую встроенную графику на гибридной системе. Effect должен
-// быть вызван до создания app/window, иначе не подхватится.
-app.commandLine.appendSwitch('force_high_performance_gpu');
+const { UPDATE_CHECK_INTERVAL_MS, checkForUpdates: checkForUpdatesShared } = require('../shared/updateChecker');
 
 // ─── Базовые пути ─────────────────────────────────────────────────────────────
 const ROOT         = path.resolve(__dirname, '..', '..');
@@ -36,33 +32,10 @@ const state = {
 
 const MONITOR_INTERVAL_MS = 2000;
 const LAUNCH_GRACE_MS     = 30000;
-
-// ─── Размер игровой области и нахлёст тайтлбара (окно "выпирает" из-под своей границы) ───
-// Windows всегда клипует/сглаживает контент строго по границе прямоугольника окна —
-// поэтому чтобы тайтлбар реально торчал выше обычного края, окно делается на OVERHANG_PX
-// выше игрового контента и делается прозрачным (transparent:true), а хитбокс обрезается setShape()
-// под реальный силуэт спрайта в этой полосе — см. computeTitlebarOverhangRects() ниже.
 const GAME_WIDTH   = 900;
 const GAME_HEIGHT  = 700;
-const OVERHANG_PX  = 10; // сколько пикселей ВЕРХА TASKBAR.png (900x50) торчит выше игрового прямоугольника —
-                          // строки 0–9 сплошного силуэта нет (только гем-ниша слева и скруглённый правый торец),
-                          // с 10-й строки спрайт уже полностью сплошной на всю ширину (проверено по альфе).
-                          // Значение не менялось при переходе спрайта с 900x40 на 900x50 — вырос только сам бар.
-                          //
-                          // НИЗ спрайта (строки ~41–49) тоже выступает за пределы сплошного бара (тот же гем
-                          // теперь торчит и снизу) — но это НЕ требует отдельного OVERHANG/setShape-рассчёта,
-                          // т.к. окно и так продолжается далеко вниз до игрового поля (700px) — нижний выступ
-                          // целиком попадает в уже существующий блок-прямоугольник #game-area и просто рисуется
-                          // поверх него по z-index. Спец-обработка через computeTitlebarOverhangRects() нужна
-                          // только там, где спрайт торчит ЗА ПРЕДЕЛЫ окна (сверху, y<0 в системе координат окна).
+const OVERHANG_PX  = 10;
 
-const BACKEND_URL  = 'https://roleplay-n-hookah.vercel.app';
-const GITHUB_REPO  = 'PAVUK-LAUNCHERS/pavuk';
-const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
-
-// app.getVersion() возвращает версию Electron runtime, а не проекта, когда приложение
-// запущено не через electron-builder/asar (наш случай — PAVUK_RELEASE с голым Electron +
-// сырым main.js). Читаем версию напрямую из корневого package.json (общего для обоих лаунчеров).
 let APP_VERSION = '0.0.0';
 try {
     APP_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8')).version || APP_VERSION;
@@ -70,54 +43,10 @@ try {
     console.error('Failed to read version from package.json:', e.message);
 }
 
-function compareVersions(a, b) {
-    const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
-    const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
-    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-        const na = pa[i] || 0, nb = pb[i] || 0;
-        if (na !== nb) return na > nb ? 1 : -1;
-    }
-    return 0;
-}
-
-async function fetchWithTimeout(url, ms) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), ms);
-    try {
-        const res = await fetch(url, { signal: controller.signal });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
-    } finally {
-        clearTimeout(timer);
-    }
-}
-
 async function checkForUpdates() {
-    const currentVersion = APP_VERSION;
-    let remote = null;
-
-    try {
-        const data = await fetchWithTimeout(`${BACKEND_URL}/api/version`, 5000);
-        remote = { version: data.version, notes: data.notes, url: data.downloadUrl };
-    } catch (e) {
-        console.warn('[update] Бэкенд недоступен, пробуем GitHub Releases:', e.message);
-    }
-
-    if (!remote) {
-        try {
-            const data = await fetchWithTimeout(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, 5000);
-            const version = String(data.tag_name || '').replace(/^v/i, '');
-            if (version) remote = { version, notes: data.body || '', url: data.html_url };
-        } catch (e) {
-            console.warn('[update] GitHub Releases тоже недоступен:', e.message);
-        }
-    }
-
-    if (!remote || !remote.version) return;
-
-    if (compareVersions(remote.version, currentVersion) > 0 && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('update-available', remote);
-    }
+    await checkForUpdatesShared(APP_VERSION, (remote) => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-available', remote);
+    });
 }
 
 // ─── Настройки ────────────────────────────────────────────────────────────────
@@ -212,12 +141,6 @@ function createTray() {
 }
 
 // ─── Хитбокс окна: обрезка под силуэт тайтлбара в зоне нахлёста ────────────────
-// Окно теперь на OVERHANG_PX выше игрового контента и прозрачно — без setShape клики
-// по прозрачным углам этой полосы (за пределами реальной формы спрайта) всё равно
-// попадали бы в невидимое окно вместо рабочего стола/того что под ним. Вырезаем
-// хитбокс по реальной альфе TASKBAR.png построчно (только для полосы нахлёста —
-// ниже неё уже идёт обычный непрозрачный игровой прямоугольник, для него отдельный
-// rect на всю ширину/высоту).
 function computeTitlebarOverhangRects() {
     const taskbarPath = path.join(ASSETS, 'img', 'Scorcher', 'TASKBAR', 'TASKBAR.png');
     let img;
@@ -230,7 +153,7 @@ function computeTitlebarOverhangRects() {
     const { width, height } = img.getSize();
     if (!width || !height) return [];
 
-    const bitmap = img.toBitmap(); // порядок каналов не важен — альфа всегда 4-й байт пикселя
+    const bitmap = img.toBitmap();
     const rows = Math.min(OVERHANG_PX, height);
 
     function getRuns(y) {
@@ -278,10 +201,9 @@ function computeTitlebarOverhangRects() {
 
 function updateWindowShape() {
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    if (process.platform === 'darwin') return; // setShape не поддерживается на macOS, не актуально для проекта
+    if (process.platform === 'darwin') return;
 
     const rects = computeTitlebarOverhangRects();
-    // Игровая область под нахлёстом — обычный непрозрачный прямоугольник, кликается целиком как раньше
     rects.push({ x: 0, y: OVERHANG_PX, width: GAME_WIDTH, height: GAME_HEIGHT });
 
     try {
@@ -295,16 +217,9 @@ function updateWindowShape() {
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: GAME_WIDTH,
-        height: GAME_HEIGHT + OVERHANG_PX, // окно выше игрового контента на полосу нахлёста тайтлбара
+        height: GAME_HEIGHT + OVERHANG_PX,
         resizable: false,
         autoHideMenuBar: true,
-        // transparent:true убран сознательно: он не нужен для нахлёста тайтлбара — этим занимается
-        // setShape()/SetWindowRgn ниже (updateWindowShape), который работает на уровне ОС независимо
-        // от transparent. А сам transparent на Windows переключает DirectComposition в режим
-        // DXGI_ALPHA_MODE_PREMULTIPLIED вместо DXGI_ALPHA_MODE_IGNORE — это уводит Chromium с быстрого
-        // GPU-пути композиции (лишние редраунды на каждый кадр видео, см. electron/electron#39895).
-        // Цена — граница выреза становится аппаратно-жёсткой (aliased) вместо мягкого альфа-перехода,
-        // визуально малозаметно на таком маленьком элементе (скруглённый угол ~30px).
         backgroundColor: '#0d0500',
         frame: false,
         useContentSize: true,
@@ -317,7 +232,7 @@ function createWindow() {
     });
 
     mainWindow.loadFile(path.join(SRC_SCORCHER, 'scorcher.html'));
-    updateWindowShape(); // хитбокс не зависит от рендерера — считан один раз из альфы статичного PNG
+    updateWindowShape();
 
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
         if (url.startsWith('byond://')) { handleLaunch(url); return { action: 'deny' }; }
@@ -358,11 +273,6 @@ function createSettingsWindow() {
     settingsWindow.loadFile(path.join(SRC_SCORCHER, 'scorcher_settings.html'));
     settingsWindow.on('closed', () => { settingsWindow = null; });
 }
-
-// isDreamSeekerRunning()/killDreamSeeker() теперь живут в src/shared/dsProcessMonitor.js —
-// общий постоянный PowerShell-хост вместо wmic (один на оба лаунчера быть не может —
-// каждый процесс (main.js и scorcher_main.js) полностью независим и поднимает свой собственный
-// PowerShell-хост, что совпадает с архитектурой проекта — отдельные BrowserWindow/трей/интервалы).
 
 // ─── Скрыть / показать лаунчер ────────────────────────────────────────────────
 function hideLauncher() {
@@ -430,7 +340,7 @@ async function processMonitorTask() {
             } else if (state.childSeen) {
                 state.dsPhase = 'IDLE';
                 showLauncher();
-                killDreamSeeker(); // без await — чистим зомби в фоне, не блокируя показ UI
+                killDreamSeeker();
             }
             break;
     }
@@ -496,7 +406,7 @@ app.whenReady().then(() => {
         if (state.autoServer)
             mainWindow.webContents.send('auto-info-update', { server: state.autoServer, time: state.autoTime });
         mainWindow.webContents.send('servers-config-update', { community: state.community, scorcherRegion: state.scorcherRegion });
-        checkForUpdates(); // первая проверка после того как renderer точно готов слушать IPC
+        checkForUpdates();
     });
 });
 

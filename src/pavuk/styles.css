@@ -20,7 +20,6 @@ body {
 }
 
 /* ─── КАСТОМНЫЙ ТАЙТЛБАР ────────────────────────────────────────────── */
-/* frame:false в main.js — системной рамки нет, рисуем свою. Окно фиксированное 900×700 и не ресайзится. */
 #custom-titlebar {
     position: fixed;
     top: 0;
@@ -45,7 +44,6 @@ body {
     z-index: 1;
 }
 
-/* Ниша под иконку в спрайте TASKBAR.png (x:9–41, y:9–41, жёлто-оранжевый гем) */
 #titlebar-icon-slot {
     position: absolute;
     left: 9px;
@@ -62,7 +60,6 @@ body {
     display: block;
 }
 
-/* Вырезы под кнопки в TASKBAR.png (900x50): свернуть x:842–866, закрыть x:867–891, оба y:14–38 */
 .titlebar-btn {
     position: absolute;
     top: 14px;

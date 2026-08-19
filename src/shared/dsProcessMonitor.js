@@ -1,19 +1,3 @@
-// ─── Мониторинг процесса dreamseeker.exe через постоянный PowerShell-процесс ───
-//
-// История: раньше опрос шёл через `powershell -Command "Get-CimInstance ..."` —
-// каждый вызов грузил полный CLR-хост PowerShell заново. При интервале 2с это
-// 1800+ холодных стартов в час, за игровую сессию 3-4ч — 5000-7000, и это давало
-// нарастающую деградацию (задержка 10-15с перед показом лаунчера).
-// Переход на wmic решал проблему холодного старта, но wmic.exe физически удалён
-// из чистых установок Windows 11 24H2+ (Microsoft KB5067470) и продолжит выпиливаться
-// дальше — опираться на него в новом коде уже нельзя.
-//
-// Решение: один PowerShell-процесс, поднятый один раз при старте лаунчера и живущий
-// всё время работы приложения. Команды пишутся в его stdin, результат читается из
-// stdout по уникальному текстовому маркеру конца ответа. CLR грузится один раз за
-// весь сеанс, а не на каждый тик — источник данных при этом остаётся официальный
-// (Get-CimInstance Win32_Process), а не выпиливаемый wmic.
-
 const { spawn, exec } = require('child_process');
 
 const SENTINEL = '__DS_MON_END_' + Math.random().toString(36).slice(2) + '__';
@@ -43,8 +27,6 @@ function startPowerShellHost() {
         }
     });
 
-    // stderr отдельных команд не критичен для мониторинга — просто проглатываем,
-    // чтобы не засорять консоль и не мешать парсингу stdout.
     psProc.stderr.on('data', () => {});
 
     const onDeath = (err) => {
@@ -102,20 +84,19 @@ async function isDreamSeekerRunning() {
         for (const pid of pids) { if (ppids.has(pid)) { hasChild = true; break; } }
         return { running: true, hasChild };
     } catch (e) {
-        // Хост упал/завис/таймаут — не роняем мониторинг, следующий тик запустит хост заново
         console.error('[ds-monitor] Опрос процессов не удался:', e.message);
         return { running: false, hasChild: false };
     }
 }
 
-// ─── Убить все процессы DreamSeeker (ждём завершения) ──────────────────────────
+// ─── Убить все процессы DreamSeeker ──────────────────────────
 function killDreamSeeker() {
     return new Promise((resolve) => {
         exec('taskkill /F /IM dreamseeker.exe /T', () => resolve());
     });
 }
 
-// ─── Остановка постоянного PowerShell-хоста (вызывать на app 'will-quit') ──────
+// ─── Остановка постоянного PowerShell-хоста ──────
 function stopMonitor() {
     if (psProc && !psProc.killed) {
         try { psProc.stdin.end(); } catch (_) {}

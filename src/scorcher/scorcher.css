@@ -10,25 +10,18 @@ body {
     color: #fff;
     overflow: hidden;
     position: relative;
-    /* Раньше было transparent — это была прямая причина сквозной прозрачности всего окна:
-       даже когда BrowserWindow перестал transparent:true, страница с альфа=0 фоном
-       заставляла Chromium продолжать альфа-композицию. Вне #game-area/#custom-titlebar
-       пикселей всё равно не видно (там либо setShape вырезает регион, либо контент
-       перекрывает всё), так что непрозрачный фон здесь не меняет визуал — только рендер-путь. */
     background: #0d0500;
     cursor: default;
     user-select: none;
 }
 
 /* ─── КАСТОМНЫЙ ТАЙТЛБАР ────────────────────────────────────────────────────────────────────────── */
-/* frame:false в scorcher_main.js — системной рамки нет, рисуем свою. Окно фиксированное 900×700 и не ресайзится —
-   поэтому бар цельный спрайт на 900px без tiling, без background-size:cover. */
 #custom-titlebar {
     position: fixed;
     top: 0;
     left: 0;
     width: 900px;
-    height: 50px; /* спрайт TASKBAR.png теперь 900x50 (был 900x40) */
+    height: 50px;
     background-image: url('../../assets/img/Scorcher/TASKBAR/TASKBAR.png');
     background-repeat: no-repeat;
     background-position: top left;
@@ -47,7 +40,6 @@ body {
     z-index: 1;
 }
 
-/* Ниша под иконку в спрайте TASKBAR.png — координаты подсчитаны по пикселям исходного PNG (x:9–41, y:9–41), пересчитано под новый спрайт 900x50 */
 #titlebar-icon-slot {
     position: absolute;
     left: 9px;
@@ -55,7 +47,7 @@ body {
     width: 32px;
     height: 32px;
     overflow: hidden;
-    pointer-events: none; /* чисто декоративный элемент, клики проходят на драг бара под ним */
+    pointer-events: none;
 }
 
 #titlebar-icon-slot canvas {
@@ -64,9 +56,6 @@ body {
     display: block;
 }
 
-/* Координаты вырезов под кнопки в TASKBAR.png (спрайт 900x50): два прозрачных окна 22×22 на y:15–37,
-   слева x:838–860 (свернуть), справа x:862–884 (закрыть). Наши спрайты 24×24 —
-   центрируем канвас по центру каждого выреза (на 1px выходит за фаску с каждой стороны — так и задумано). */
 .titlebar-btn {
     position: absolute;
     top: 14px;
@@ -116,8 +105,7 @@ body {
     height: 100%;
     pointer-events: none;
     z-index: 1;
-    opacity: 0.04;           /* едва заметное */
-    /* без mix-blend-mode — чистое наложение поверх видео */
+    opacity: 0.04;
 }
 
 /* ─── ОВЕРЛЕИ ────────────────────────────────────────────────────────────────── */
@@ -211,26 +199,8 @@ body {
         drop-shadow(0 0 22px rgba(220, 40,  0, 0.9))
         drop-shadow(0 0 50px rgba(180, 20,  0, 0.6))
         drop-shadow(0 0 90px rgba(130, 8,   0, 0.35));
-    /* Мерцание самой картинки (logo-flicker) убрано — осталась только пульсация
-       красного неона под лого (.logo-glow / glow-pulse выше). Картинка теперь
-       статична по opacity, дышит только ореол сзади. */
 }
 
-/* Зерно на лого — 6 предпросчитанных canvas-кадров (см. scorcher_script.js), переключаются 1 раз/сек.
-   Раньше был SVG feTurbulence прямо в filter картинки: feComposite operator="in" обрезал шум по
-   альфа-каналу САМОГО спрайта, feColorMatrix гасил интенсивность, feBlend mode="soft-light" смешивал
-   с картинкой. Отдельный <canvas> поверх .logo-img ничего этого не наследует сам по себе — воспроизводим руками:
-   1) mask-image тем же PNG, mask-size:contain — те же правила позиционирования, что и object-fit:contain
-      у .logo-img — обрезает канвас строго по силуэту лого, как раньше делал feComposite operator="in".
-   2) opacity — гасит интенсивность (замена feColorMatrix), иначе сырой 0..255 шум через soft-light
-      выглядит грубо, а не «едва заметное дыхание», как было в SVG-версии.
-   3) mix-blend-mode:soft-light — тот же feBlend mode="soft-light" из SVG.
-   Отдельно: `width:100%; height:100%` обязательны вдобавок к `inset:0` — canvas это 
-   replaced-элемент, и без explicit width/height абсолютное позиционирование с `inset:0` не
-   растягивает его до размера контейнера (как у обычного <div>), а берёт размер самого
-   битмапа canvas (маленький даунскейленный размер, который ставит JS в canvas.width/height) —
-   без explicit 100% канвас прилипал в угол в своём маленьком нативном размере вместо растяжки
-   на весь .logo-wrapper (та же причина, почему у #grain-bg эти свойства уже стояли). */
 .logo-grain-canvas {
     position: absolute;
     inset: 0;
