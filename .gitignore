@@ -1,9 +1,0 @@
-node_modules/
-dist/
-dist-scorcher/
-*.log
-.claude/
-_backup/
-CLAUDE.md
-AGENTS.md
-build_release.bat
