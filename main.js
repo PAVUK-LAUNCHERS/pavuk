@@ -4,7 +4,7 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const { isDreamSeekerRunning, killDreamSeeker, stopMonitor } = require('./src/shared/dsProcessMonitor');
-const { UPDATE_CHECK_INTERVAL_MS, checkForUpdates: checkForUpdatesShared } = require('./src/shared/updateChecker');
+const { checkForUpdates: checkForUpdatesShared } = require('./src/shared/updateChecker');
 
 // ─── Базовые пути (работает и из корня, и из dist/win-unpacked) ───────────────
 const ROOT      = __dirname;
@@ -397,7 +397,6 @@ app.whenReady().then(() => {
     registerExitHotkey();
     setInterval(processMonitorTask,       MONITOR_INTERVAL_MS);
     setInterval(timeBasedAutoConnectTask, 10000);
-    setInterval(checkForUpdates,          UPDATE_CHECK_INTERVAL_MS);
 
     mainWindow.webContents.on('did-finish-load', () => {
         if (state.autoServer)
