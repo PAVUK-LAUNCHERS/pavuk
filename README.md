@@ -22,7 +22,7 @@
 
 - `GET /health` - просто пингует бекенд, чтобы показать статус ONLINE/OFFLINE на странице.
 - `GET /api/version` - узнаёт актуальную версию лаунчера и ссылку на скачивание (бекенд сам берёт это из GitHub Releases).
-- `GET /snake/session`, `POST /snake/record`, `POST /snake/win` — 
+- `GET /snake/session`, `POST /snake/record`, `POST /snake/win` - техническая часть змейки. 
 
 Все эти запросы видно прямо в исходнике `public/index.html`.
 
